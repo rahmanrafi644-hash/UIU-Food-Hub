@@ -19,6 +19,7 @@ import {
 export const VendorOrdersPage: React.FC = () => {
   const { orders, updateOrderStatus, verifyPickupPin, activeVendorOutlet, outlets } = useApp();
   const [statusFilter, setStatusFilter] = useState<'All' | OrderStatus>('All');
+  const [timingFilter, setTimingFilter] = useState<'All' | 'Immediate' | 'Scheduled'>('All');
   const [activePinOrder, setActivePinOrder] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
@@ -27,11 +28,15 @@ export const VendorOrdersPage: React.FC = () => {
 
   const currentOutlet = activeVendorOutlet || outlets[0];
 
-  // Scoped to current branch
+  // Scoped to current branch & timing preference
   const filteredOrders = orders.filter((o) => {
     const matchesOutlet = o.outletId === currentOutlet.id;
     const matchesStatus = statusFilter === 'All' || o.status === statusFilter;
-    return matchesOutlet && matchesStatus;
+    const matchesTiming =
+      timingFilter === 'All' ||
+      (timingFilter === 'Immediate' && !o.isScheduledAhead) ||
+      (timingFilter === 'Scheduled' && o.isScheduledAhead);
+    return matchesOutlet && matchesStatus && matchesTiming;
   });
 
   const handleVerifyPin = (orderId: string) => {
@@ -88,6 +93,24 @@ export const VendorOrdersPage: React.FC = () => {
             }}
           >
             {st}
+          </button>
+        ))}
+      </div>
+
+      {/* Timing Mode Filter Tabs */}
+      <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: 2 }}>
+        {[
+          { id: 'All', label: 'All Timing' },
+          { id: 'Immediate', label: '⚡ Cook Now (Immediate)' },
+          { id: 'Scheduled', label: '⏰ Class Pre-Orders' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTimingFilter(t.id as any)}
+            className={`category-pill ${timingFilter === t.id ? 'active' : ''}`}
+            style={{ fontSize: 11, padding: '5px 12px' }}
+          >
+            {t.label}
           </button>
         ))}
       </div>
@@ -157,6 +180,42 @@ export const VendorOrdersPage: React.FC = () => {
                 </span>
               </div>
 
+              {/* Class Pre-Order Alert Banner */}
+              {order.isScheduledAhead && (
+                <div
+                  style={{
+                    background: '#FFF7ED',
+                    border: '1.5px solid #FDBA74',
+                    borderRadius: 12,
+                    padding: '8px 12px',
+                    marginBottom: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Clock size={16} color="#EA580C" />
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <strong style={{ fontSize: 11, color: '#C2410C', textTransform: 'uppercase' }}>
+                          ⏰ Scheduled Class Pre-Order
+                        </strong>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#EA580C', background: '#FFEDD5', padding: '1px 6px', borderRadius: 4 }}>
+                          {order.pickupTime}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 11, color: '#9A3412', fontWeight: 600 }}>
+                        Slot: {order.pickupWindow || order.pickupTime}
+                      </span>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: '#9A3412', background: '#FEE2E2', padding: '3px 8px', borderRadius: 9999 }}>
+                    Hold Kitchen Prep
+                  </span>
+                </div>
+              )}
+
               {/* Items List */}
               <div
                 style={{
@@ -208,9 +267,16 @@ export const VendorOrdersPage: React.FC = () => {
                   marginBottom: 12,
                 }}
               >
-                <span>
-                  Pickup: <strong>{order.pickupTime}</strong>
-                </span>
+                <div>
+                  <span style={{ display: 'block' }}>
+                    Pickup: <strong>{order.pickupTime}</strong>
+                  </span>
+                  {order.pickupWindow && (
+                    <span style={{ color: '#C2410C', fontWeight: 700, fontSize: 10 }}>
+                      Window: {order.pickupWindow}
+                    </span>
+                  )}
+                </div>
                 <span>
                   Payment: <strong>{order.paymentMethod} (Demo)</strong>
                 </span>

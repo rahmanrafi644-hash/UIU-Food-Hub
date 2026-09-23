@@ -13,30 +13,98 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const { cart, cartTotal, createOrder } = useApp();
   const navigate = useNavigate();
 
-  const [pickupType, setPickupType] = useState<PickupType>('ASAP');
+  type TimingPreset = 'ASAP' | '15m' | '20m' | '25m' | '30m' | '45m' | '60m' | 'custom';
+
+  const [timingPreset, setTimingPreset] = useState<TimingPreset>('ASAP');
+  const [customSlot, setCustomSlot] = useState('2:00 PM');
   const [pickupDate, setPickupDate] = useState('Today');
-  const [pickupTime, setPickupTime] = useState('1:30 PM');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bKash');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
   const [placedPickupPin, setPlacedPickupPin] = useState<string | null>(null);
+  const [placedPickupWindow, setPlacedPickupWindow] = useState<string | null>(null);
+  const [placedPickupTime, setPlacedPickupTime] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const targetOutletId = cart[0]?.item.outletId || 'khans-kitchen';
   const targetOutletName = cart[0]?.item.outletName || "Khan's Kitchen";
 
+  const getOffsetMinutes = (preset: TimingPreset): number => {
+    switch (preset) {
+      case 'ASAP': return 10;
+      case '15m': return 15;
+      case '20m': return 20;
+      case '25m': return 25;
+      case '30m': return 30;
+      case '45m': return 45;
+      case '60m': return 60;
+      case 'custom': return 60;
+    }
+  };
+
+  const getTargetTimeDisplay = () => {
+    if (timingPreset === 'custom') {
+      return customSlot;
+    }
+    const offset = getOffsetMinutes(timingPreset);
+    const d = new Date(Date.now() + offset * 60000);
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h}:${m < 10 ? '0' + m : m} ${ap}`;
+  };
+
+  const getTargetWindowDisplay = () => {
+    if (timingPreset === 'ASAP') {
+      const end = new Date(Date.now() + 15 * 60000);
+      let eh = end.getHours();
+      const em = end.getMinutes();
+      const eap = eh >= 12 ? 'PM' : 'AM';
+      eh = eh % 12 || 12;
+      return `Next 10–15 mins (by ${eh}:${em < 10 ? '0' + em : em} ${eap})`;
+    }
+    if (timingPreset === 'custom') {
+      return `${customSlot} (±7 mins window)`;
+    }
+    const offset = getOffsetMinutes(timingPreset);
+    const start = new Date(Date.now() + Math.max(0, offset - 5) * 60000);
+    const end = new Date(Date.now() + (offset + 10) * 60000);
+    const fmt = (d: Date) => {
+      let h = d.getHours();
+      const m = d.getMinutes();
+      const ap = h >= 12 ? 'PM' : 'AM';
+      h = h % 12 || 12;
+      return `${h}:${m < 10 ? '0' + m : m} ${ap}`;
+    };
+    return `${fmt(start)} – ${fmt(end)}`;
+  };
+
   const handleConfirmOrder = () => {
     setIsSubmitting(true);
     setErrorMsg(null);
 
+    const offset = getOffsetMinutes(timingPreset);
+    const isScheduled = timingPreset !== 'ASAP';
+    const computedTargetTime = getTargetTimeDisplay();
+    const computedWindow = getTargetWindowDisplay();
+
+    const formattedPickupTime = timingPreset === 'ASAP'
+      ? 'Within 15 mins (ASAP)'
+      : `${computedTargetTime} (${timingPreset === '60m' ? 'In 1 hour' : `In ${offset}m`})`;
+
     const result = createOrder({
       outletId: targetOutletId,
-      pickupType,
-      pickupDate: pickupType === 'Schedule Pickup' ? pickupDate : undefined,
-      pickupTime: pickupType === 'Schedule Pickup' ? pickupTime : 'Within 15 mins (ASAP)',
+      pickupType: isScheduled ? 'Schedule Pickup' : 'ASAP',
+      pickupDate: isScheduled ? pickupDate : 'Today',
+      pickupTime: formattedPickupTime,
+      pickupWindow: computedWindow,
+      pickupOffsetMinutes: offset,
+      isScheduledAhead: isScheduled,
+      slotSecured: true,
       paymentMethod,
       specialInstructions: specialInstructions.trim() || undefined,
     });
@@ -46,6 +114,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     if (result.success && result.orderId) {
       setPlacedOrderId(result.orderId);
       setPlacedPickupPin(result.pickupPin || null);
+      setPlacedPickupWindow(computedWindow);
+      setPlacedPickupTime(formattedPickupTime);
     } else {
       setErrorMsg(result.error || 'Failed to place order. Please check inventory.');
     }
@@ -126,8 +196,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ color: 'var(--text-muted)' }}>Pickup:</span>
-                <strong>{pickupType === 'ASAP' ? 'ASAP (~15 mins)' : `${pickupDate} at ${pickupTime}`}</strong>
+                <strong>{placedPickupTime || (timingPreset === 'ASAP' ? 'Within 15 mins (ASAP)' : `${pickupDate} at ${customSlot}`)}</strong>
               </div>
+              {placedPickupWindow && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Secured Window:</span>
+                  <strong style={{ color: '#059669' }}>{placedPickupWindow}</strong>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ color: 'var(--text-muted)' }}>Payment:</span>
                 <strong>{paymentMethod} (Demo Paid)</strong>
@@ -193,64 +269,68 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               </div>
             )}
 
-            {/* Section 1: Pickup Preference */}
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 8 }}>
-                Pickup Preference
-              </label>
+            {/* Section 1: Flexible Campus Pickup Timing */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                  Flexible Pickup Timing
+                </label>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--primary)', background: 'var(--primary-light)', padding: '2px 8px', borderRadius: 9999 }}>
+                  Campus Slot Guaranteed
+                </span>
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+                Order ahead during class and collect without standing in crowded cafeteria queues.
+              </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setPickupType('ASAP')}
-                  style={{
-                    padding: '12px 10px',
-                    borderRadius: 14,
-                    border: pickupType === 'ASAP' ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
-                    background: pickupType === 'ASAP' ? 'var(--primary-light)' : 'var(--bg-app)',
-                    color: pickupType === 'ASAP' ? 'var(--primary)' : 'var(--text-main)',
-                    fontWeight: 700,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Clock size={18} />
-                  <span>ASAP</span>
-                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8 }}>Ready in 15 mins</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPickupType('Schedule Pickup')}
-                  style={{
-                    padding: '12px 10px',
-                    borderRadius: 14,
-                    border: pickupType === 'Schedule Pickup' ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
-                    background: pickupType === 'Schedule Pickup' ? 'var(--primary-light)' : 'var(--bg-app)',
-                    color: pickupType === 'Schedule Pickup' ? 'var(--primary)' : 'var(--text-main)',
-                    fontWeight: 700,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}
-                >
-                  <Calendar size={18} />
-                  <span>Schedule</span>
-                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8 }}>Pick time slot</span>
-                </button>
+              {/* Timing Preset Quick Select Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 10 }}>
+                {[
+                  { id: 'ASAP', label: '⚡ ASAP', sub: '~10-15m' },
+                  { id: '15m', label: '+15m', sub: 'Short Break' },
+                  { id: '20m', label: '+20m', sub: 'Break' },
+                  { id: '25m', label: '+25m', sub: 'Lab Pause' },
+                  { id: '30m', label: '+30m', sub: 'Mid-Class' },
+                  { id: '45m', label: '+45m', sub: 'Next Period' },
+                  { id: '60m', label: '+1 Hour', sub: 'Class Ends' },
+                  { id: 'custom', label: '🕒 Custom', sub: 'Pick Slot' },
+                ].map((item) => {
+                  const isSelected = timingPreset === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setTimingPreset(item.id as TimingPreset)}
+                      style={{
+                        padding: '8px 4px',
+                        borderRadius: 12,
+                        border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border-subtle)',
+                        background: isSelected ? 'var(--primary-light)' : 'var(--bg-app)',
+                        color: isSelected ? 'var(--primary)' : 'var(--text-main)',
+                        fontWeight: 800,
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      <span style={{ fontSize: 9, fontWeight: 600, opacity: isSelected ? 0.9 : 0.6 }}>
+                        {item.sub}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
-              {pickupType === 'Schedule Pickup' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+              {/* Custom Date & Hour picker if custom selected */}
+              {timingPreset === 'custom' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10, background: 'var(--bg-app)', padding: 10, borderRadius: 12 }}>
                   <div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Date</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Date</span>
                     <select
                       value={pickupDate}
                       onChange={(e) => setPickupDate(e.target.value)}
@@ -259,7 +339,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                         padding: '8px 10px',
                         borderRadius: 10,
                         border: '1px solid var(--border-subtle)',
-                        background: 'var(--bg-app)',
+                        background: 'white',
                         fontSize: 12,
                         marginTop: 4,
                       }}
@@ -270,16 +350,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   </div>
 
                   <div>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Time Slot</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Time Slot</span>
                     <select
-                      value={pickupTime}
-                      onChange={(e) => setPickupTime(e.target.value)}
+                      value={customSlot}
+                      onChange={(e) => setCustomSlot(e.target.value)}
                       style={{
                         width: '100%',
                         padding: '8px 10px',
                         borderRadius: 10,
                         border: '1px solid var(--border-subtle)',
-                        background: 'var(--bg-app)',
+                        background: 'white',
                         fontSize: 12,
                         marginTop: 4,
                       }}
@@ -288,11 +368,53 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                       <option value="1:30 PM">1:30 PM</option>
                       <option value="1:45 PM">1:45 PM</option>
                       <option value="2:00 PM">2:00 PM</option>
+                      <option value="2:15 PM">2:15 PM</option>
                       <option value="2:30 PM">2:30 PM</option>
+                      <option value="3:00 PM">3:00 PM</option>
+                      <option value="3:30 PM">3:30 PM</option>
+                      <option value="4:00 PM">4:00 PM</option>
+                      <option value="4:30 PM">4:30 PM</option>
+                      <option value="5:00 PM">5:00 PM</option>
                     </select>
                   </div>
                 </div>
               )}
+
+              {/* Dynamic Slot Security & Freshness Guarantee Card */}
+              <div
+                style={{
+                  background: timingPreset === 'ASAP' ? '#F0FDF4' : '#FFFBEB',
+                  border: timingPreset === 'ASAP' ? '1px solid #BBF7D0' : '1.5px solid #FDE68A',
+                  borderRadius: 14,
+                  padding: '10px 12px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 4,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <ShieldCheck size={16} color={timingPreset === 'ASAP' ? '#059669' : '#D97706'} />
+                    <strong style={{ fontSize: 12, color: timingPreset === 'ASAP' ? '#065F46' : '#92400E' }}>
+                      {timingPreset === 'ASAP' ? 'Immediate Express Queue' : 'Campus Break Slot Secured'}
+                    </strong>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: timingPreset === 'ASAP' ? '#059669' : '#D97706' }}>
+                    Target: {getTargetTimeDisplay()}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: 11, color: timingPreset === 'ASAP' ? '#047857' : '#B45309' }}>
+                  <span>Secured Window: </span>
+                  <strong>{getTargetWindowDisplay()}</strong>
+                </div>
+
+                {timingPreset !== 'ASAP' && (
+                  <p style={{ fontSize: 10, color: '#92400E', margin: '4px 0 0 0', lineHeight: 1.4, borderTop: '1px dashed #FDE68A', paddingTop: 4 }}>
+                    ♨️ <strong>Freshness Hold:</strong> The kitchen will delay cooking until 10 mins prior to your pickup so your food is fresh and piping hot right when your class dismisses!
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Special Instructions Note */}

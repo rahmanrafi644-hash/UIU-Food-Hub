@@ -17,6 +17,7 @@ import {
   Store,
   MessageSquare,
   Activity,
+  Calendar,
 } from 'lucide-react';
 
 export const VendorDashboardPage: React.FC = () => {
@@ -39,6 +40,9 @@ export const VendorDashboardPage: React.FC = () => {
   const outletOrders = orders.filter((o) => o.outletId === currentOutlet.id);
   const todayOrdersCount = outletOrders.length;
   const activeOrdersCount = outletOrders.filter((o) => o.status !== 'Completed').length;
+  const scheduledPreOrdersCount = outletOrders.filter(
+    (o) => o.isScheduledAhead && o.status !== 'Completed'
+  ).length;
   const todayRevenue = outletOrders.reduce((sum, o) => sum + o.total, 0);
 
   // Scoped inventory & low stock items for this branch
@@ -197,6 +201,36 @@ export const VendorDashboardPage: React.FC = () => {
         </div>
       )}
 
+      {/* Scheduled Class Break Pre-Orders Banner */}
+      {scheduledPreOrdersCount > 0 && (
+        <div
+          onClick={() => navigate('/vendor/orders')}
+          style={{
+            background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
+            border: '1.5px solid #FDBA74',
+            padding: '12px 14px',
+            borderRadius: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Calendar size={18} color="#EA580C" />
+            <div>
+              <h4 style={{ fontSize: 13, fontWeight: 800, color: '#C2410C' }}>
+                {scheduledPreOrdersCount} Upcoming Class Break Pre-Order{scheduledPreOrdersCount > 1 ? 's' : ''}
+              </h4>
+              <span style={{ fontSize: 11, color: '#9A3412' }}>
+                Students in lecture — pickup counter slots locked for break!
+              </span>
+            </div>
+          </div>
+          <ArrowRight size={16} color="#EA580C" />
+        </div>
+      )}
+
       {/* AI Demand Intelligence Highlight Banner for This Branch */}
       <div
         className="card-base"
@@ -347,9 +381,16 @@ export const VendorDashboardPage: React.FC = () => {
               <div key={order.id} className="card-base" style={{ padding: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <div>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-light)' }}>
-                      #{order.id} • {order.studentName}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-light)' }}>
+                        #{order.id} • {order.studentName}
+                      </span>
+                      {order.isScheduledAhead && (
+                        <span style={{ fontSize: 9, fontWeight: 800, color: '#C2410C', background: '#FFEDD5', padding: '1px 5px', borderRadius: 4 }}>
+                          ⏰ {order.pickupTime}
+                        </span>
+                      )}
+                    </div>
                     <h4 style={{ fontSize: 14, fontWeight: 800 }}>
                       PIN: <span style={{ color: 'var(--primary)' }}>{order.pickupPin}</span>
                     </h4>

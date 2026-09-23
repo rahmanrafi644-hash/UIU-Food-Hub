@@ -67,6 +67,10 @@ export interface Order {
   pickupType: PickupType;
   pickupDate?: string;
   pickupTime?: string;
+  pickupWindow?: string; // e.g. "2:00 PM – 2:15 PM"
+  pickupOffsetMinutes?: number; // e.g. 15, 20, 25, 30, 45, 60
+  isScheduledAhead?: boolean; // true if scheduled for class break / future time
+  slotSecured?: boolean; // true if pickup slot guaranteed
   pickupPin: string; // 4-digit verification code
   specialInstructions?: string;
   paymentMethod: PaymentMethod;

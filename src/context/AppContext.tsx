@@ -60,6 +60,10 @@ interface AppContextType {
     pickupType: PickupType;
     pickupDate?: string;
     pickupTime?: string;
+    pickupWindow?: string;
+    pickupOffsetMinutes?: number;
+    isScheduledAhead?: boolean;
+    slotSecured?: boolean;
     paymentMethod: PaymentMethod;
     specialInstructions?: string;
   }) => { success: boolean; orderId?: string; pickupPin?: string; error?: string };
@@ -162,7 +166,11 @@ const INITIAL_DEMO_ORDERS: Order[] = [
     total: 400,
     pickupType: 'Schedule Pickup',
     pickupDate: 'Today',
-    pickupTime: '1:45 PM',
+    pickupTime: '1:45 PM (In 45 mins)',
+    pickupWindow: '1:40 PM – 1:55 PM',
+    pickupOffsetMinutes: 45,
+    isScheduledAhead: true,
+    slotSecured: true,
     pickupPin: '9523',
     specialInstructions: 'Extra spicy chili sauce on the side please.',
     paymentMethod: 'Cash',
@@ -392,6 +400,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pickupType,
     pickupDate,
     pickupTime,
+    pickupWindow,
+    pickupOffsetMinutes,
+    isScheduledAhead,
+    slotSecured = true,
     paymentMethod,
     specialInstructions,
   }: {
@@ -399,6 +411,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pickupType: PickupType;
     pickupDate?: string;
     pickupTime?: string;
+    pickupWindow?: string;
+    pickupOffsetMinutes?: number;
+    isScheduledAhead?: boolean;
+    slotSecured?: boolean;
     paymentMethod: PaymentMethod;
     specialInstructions?: string;
   }) => {
@@ -449,6 +465,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pickupType,
       pickupDate: pickupType === 'Schedule Pickup' ? pickupDate : 'Today',
       pickupTime: pickupType === 'Schedule Pickup' ? pickupTime : 'Within 15 mins (ASAP)',
+      pickupWindow: pickupWindow || (pickupType === 'ASAP' ? 'Within 15 mins' : pickupTime),
+      pickupOffsetMinutes: pickupOffsetMinutes ?? (pickupType === 'ASAP' ? 15 : undefined),
+      isScheduledAhead: isScheduledAhead ?? (pickupType === 'Schedule Pickup'),
+      slotSecured: slotSecured ?? true,
       pickupPin: newPin,
       specialInstructions,
       paymentMethod,

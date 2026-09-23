@@ -131,7 +131,7 @@ export const StudentOrdersPage: React.FC = () => {
                     padding: '8px 12px',
                     borderRadius: 12,
                     border: '1px solid #FDE68A',
-                    marginBottom: 10,
+                    marginBottom: 8,
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -141,6 +141,45 @@ export const StudentOrdersPage: React.FC = () => {
                     </span>
                   </div>
                   <span style={{ fontSize: 10, color: '#B45309', fontWeight: 600 }}>Show to vendor</span>
+                </div>
+
+                {/* Secured Campus Pickup Window Banner */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: order.isScheduledAhead ? '#FFF7ED' : '#F0FDF4',
+                    border: order.isScheduledAhead ? '1px solid #FFEDD5' : '1px solid #DCFCE7',
+                    padding: '7px 12px',
+                    borderRadius: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={14} color={order.isScheduledAhead ? 'var(--primary)' : '#059669'} />
+                    <div>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: order.isScheduledAhead ? 'var(--primary)' : '#059669', textTransform: 'uppercase' }}>
+                        {order.isScheduledAhead ? '⏰ Class Break Slot' : '⚡ Express Pickup'}
+                      </span>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                        {order.pickupWindow || order.pickupTime}
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: '#059669',
+                      background: '#ECFDF5',
+                      padding: '2px 7px',
+                      borderRadius: 9999,
+                      border: '1px solid #A7F3D0',
+                    }}
+                  >
+                    🛡️ Slot Secured
+                  </span>
                 </div>
 
                 {/* Progress Steps for Live Orders */}
@@ -242,6 +281,11 @@ export const StudentOrdersPage: React.FC = () => {
                     <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: 11 }}>
                       Pickup: <strong>{order.pickupTime}</strong>
                     </span>
+                    {order.pickupWindow && (
+                      <span style={{ color: '#059669', display: 'block', fontSize: 11, fontWeight: 700 }}>
+                        Slot: {order.pickupWindow}
+                      </span>
+                    )}
                     <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
                       Payment: <strong>{order.paymentMethod} (Demo)</strong>
                     </span>
