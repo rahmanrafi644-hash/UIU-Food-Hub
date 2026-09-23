@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { PickupType, PaymentMethod } from '../../types';
-import { X, Clock, Calendar, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Clock, Calendar, ShieldCheck, CheckCircle2, AlertCircle, KeyRound, MessageSquare } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface CheckoutModalProps {
@@ -17,9 +17,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const [pickupDate, setPickupDate] = useState('Today');
   const [pickupTime, setPickupTime] = useState('1:30 PM');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bKash');
+  const [specialInstructions, setSpecialInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
+  const [placedPickupPin, setPlacedPickupPin] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -36,12 +38,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       pickupDate: pickupType === 'Schedule Pickup' ? pickupDate : undefined,
       pickupTime: pickupType === 'Schedule Pickup' ? pickupTime : 'Within 15 mins (ASAP)',
       paymentMethod,
+      specialInstructions: specialInstructions.trim() || undefined,
     });
 
     setIsSubmitting(false);
 
     if (result.success && result.orderId) {
       setPlacedOrderId(result.orderId);
+      setPlacedPickupPin(result.pickupPin || null);
     } else {
       setErrorMsg(result.error || 'Failed to place order. Please check inventory.');
     }
@@ -82,6 +86,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               Order ID: <strong style={{ color: 'var(--primary)' }}>#{placedOrderId}</strong>
             </p>
 
+            {/* Pickup PIN Hero Callout */}
+            {placedPickupPin && (
+              <div
+                style={{
+                  background: '#FEF3C7',
+                  border: '1.5px solid #FDE68A',
+                  borderRadius: 16,
+                  padding: '12px 16px',
+                  marginBottom: 16,
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#92400E', textTransform: 'uppercase' }}>
+                  Your Pickup Verification PIN
+                </span>
+                <p style={{ fontSize: 28, fontWeight: 800, color: '#92400E', letterSpacing: 3, margin: '2px 0' }}>
+                  {placedPickupPin}
+                </p>
+                <span style={{ fontSize: 10, color: '#B45309' }}>
+                  Show this 4-digit code to the vendor counter to collect your meal
+                </span>
+              </div>
+            )}
+
             <div
               style={{
                 padding: 14,
@@ -105,6 +132,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 <span style={{ color: 'var(--text-muted)' }}>Payment:</span>
                 <strong>{paymentMethod} (Demo Paid)</strong>
               </div>
+              {specialInstructions && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Note:</span>
+                  <strong style={{ color: '#D97706' }}>{specialInstructions}</strong>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
                 <span style={{ color: 'var(--text-main)', fontWeight: 700 }}>Total:</span>
                 <strong style={{ color: 'var(--primary)', fontSize: 14 }}>৳{cartTotal}</strong>
@@ -161,7 +194,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
             )}
 
             {/* Section 1: Pickup Preference */}
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 8 }}>
                 Pickup Preference
               </label>
@@ -260,6 +293,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Special Instructions Note */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 6 }}>
+                Special Cooking Instructions (Optional)
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Less spicy, no onions, extra tissue..."
+                value={specialInstructions}
+                onChange={(e) => setSpecialInstructions(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 12,
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-app)',
+                  fontSize: 12,
+                  outline: 'none',
+                }}
+              />
             </div>
 
             {/* Section 2: Demo Payment Method */}

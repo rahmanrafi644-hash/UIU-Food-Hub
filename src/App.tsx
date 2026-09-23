@@ -22,6 +22,7 @@ import { VendorInventoryPage } from './pages/vendor/VendorInventoryPage';
 import { VendorAiAssistantPage } from './pages/vendor/VendorAiAssistantPage';
 import { VendorTablesPage } from './pages/vendor/VendorTablesPage';
 import { VendorReportsPage } from './pages/vendor/VendorReportsPage';
+import { VendorMessagesPage } from './pages/vendor/VendorMessagesPage';
 
 const AppLayout: React.FC = () => {
   const { user } = useApp();
@@ -109,6 +110,10 @@ const AppLayout: React.FC = () => {
         <Route
           path="/vendor/reports"
           element={!user ? <Navigate to="/login" replace /> : <VendorReportsPage />}
+        />
+        <Route
+          path="/vendor/messages"
+          element={!user ? <Navigate to="/login" replace /> : <VendorMessagesPage />}
         />
 
         {/* Fallback */}

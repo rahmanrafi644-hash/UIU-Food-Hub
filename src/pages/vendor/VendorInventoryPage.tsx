@@ -2,14 +2,15 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { StockIntakeModal } from '../../components/vendor/StockIntakeModal';
-import { PlusCircle, Search, Sparkles, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Search, Sparkles, AlertTriangle, Store } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const VendorInventoryPage: React.FC = () => {
-  const { inventory, outlets } = useApp();
+  const { inventory, outlets, activeVendorOutlet, switchVendorOutlet } = useApp();
   const navigate = useNavigate();
 
-  const [selectedOutlet, setSelectedOutlet] = useState<string>('all');
+  const currentOutlet = activeVendorOutlet || outlets[0];
+  const [selectedOutlet, setSelectedOutlet] = useState<string>(currentOutlet.id);
   const [search, setSearch] = useState('');
   const [selectedItemIdForRestock, setSelectedItemIdForRestock] = useState<string | undefined>(undefined);
   const [isStockModalOpen, setIsStockModalOpen] = useState(false);
@@ -29,9 +30,15 @@ export const VendorInventoryPage: React.FC = () => {
     <div className="app-main">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Live Inventory</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', marginBottom: 2 }}>
+            <Store size={15} />
+            <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase' }}>
+              {currentOutlet.name}
+            </span>
+          </div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Branch Stock</h2>
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Shared real-time stock across student and vendor apps
+            Real-time synchronized inventory for {currentOutlet.name}
           </p>
         </div>
 
@@ -75,20 +82,28 @@ export const VendorInventoryPage: React.FC = () => {
       {/* Outlet Filter Pills */}
       <div className="category-row">
         <button
+          onClick={() => setSelectedOutlet(currentOutlet.id)}
+          className={`category-pill ${selectedOutlet === currentOutlet.id ? 'active' : ''}`}
+        >
+          📍 {currentOutlet.name} (Active)
+        </button>
+        <button
           onClick={() => setSelectedOutlet('all')}
           className={`category-pill ${selectedOutlet === 'all' ? 'active' : ''}`}
         >
-          All Outlets
+          All Campus Outlets
         </button>
-        {outlets.map((o) => (
-          <button
-            key={o.id}
-            onClick={() => setSelectedOutlet(o.id)}
-            className={`category-pill ${selectedOutlet === o.id ? 'active' : ''}`}
-          >
-            {o.name}
-          </button>
-        ))}
+        {outlets
+          .filter((o) => o.id !== currentOutlet.id)
+          .map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setSelectedOutlet(o.id)}
+              className={`category-pill ${selectedOutlet === o.id ? 'active' : ''}`}
+            >
+              {o.name}
+            </button>
+          ))}
       </div>
 
       {/* Search */}

@@ -8,6 +8,8 @@ export interface User {
   studentId?: string;
   phone?: string;
   avatar?: string;
+  vendorOutletId?: string;
+  vendorOutletName?: string;
 }
 
 export type StockStatus = 'Available' | 'Low Stock' | 'Sold Out';
@@ -28,6 +30,8 @@ export interface FoodItem {
   popular?: boolean;
 }
 
+export type OutletOperationalStatus = 'Open' | 'Busy' | 'Paused';
+
 export interface CampusOutlet {
   id: string;
   name: string;
@@ -38,6 +42,8 @@ export interface CampusOutlet {
   rating: number;
   totalItems: number;
   tablesCount: number;
+  operationalStatus?: OutletOperationalStatus;
+  estimatedWaitMinutes?: number;
 }
 
 export interface CartItem {
@@ -61,10 +67,25 @@ export interface Order {
   pickupType: PickupType;
   pickupDate?: string;
   pickupTime?: string;
+  pickupPin: string; // 4-digit verification code
+  specialInstructions?: string;
   paymentMethod: PaymentMethod;
   status: OrderStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  studentId: string;
+  studentName: string;
+  outletId: string;
+  outletName: string;
+  orderId?: string;
+  senderRole: 'student' | 'vendor';
+  message: string;
+  timestamp: string;
+  isRead: boolean;
 }
 
 export type TableStatus = 'Available' | 'Reserved' | 'Occupied';

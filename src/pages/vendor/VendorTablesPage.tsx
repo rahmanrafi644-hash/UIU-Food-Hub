@@ -3,8 +3,9 @@ import { useApp } from '../../context/AppContext';
 import { CalendarDays, Clock, Users, Phone, CheckCircle, Store, AlertCircle } from 'lucide-react';
 
 export const VendorTablesPage: React.FC = () => {
-  const { tableBookings, tables, outlets } = useApp();
-  const [selectedOutlet, setSelectedOutlet] = useState<string>('all');
+  const { tableBookings, tables, outlets, activeVendorOutlet } = useApp();
+  const currentBranch = activeVendorOutlet || outlets[0];
+  const [selectedOutlet, setSelectedOutlet] = useState<string>(currentBranch.id);
 
   const filteredBookings = tableBookings.filter(
     (b) => selectedOutlet === 'all' || b.outletId === selectedOutlet
@@ -17,29 +18,43 @@ export const VendorTablesPage: React.FC = () => {
   return (
     <div className="app-main">
       <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', marginBottom: 2 }}>
+          <Store size={15} />
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase' }}>
+            {currentBranch.name}
+          </span>
+        </div>
         <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Table Management</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          Cafeteria seating reservations & live occupancy
+          Cafeteria seating reservations & live occupancy for {currentBranch.name}
         </p>
       </div>
 
       {/* Outlet Filter */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
         <button
+          onClick={() => setSelectedOutlet(currentBranch.id)}
+          className={`category-pill ${selectedOutlet === currentBranch.id ? 'active' : ''}`}
+        >
+          📍 {currentBranch.name} (Active)
+        </button>
+        <button
           onClick={() => setSelectedOutlet('all')}
           className={`category-pill ${selectedOutlet === 'all' ? 'active' : ''}`}
         >
           All Outlets
         </button>
-        {outlets.map((o) => (
-          <button
-            key={o.id}
-            onClick={() => setSelectedOutlet(o.id)}
-            className={`category-pill ${selectedOutlet === o.id ? 'active' : ''}`}
-          >
-            {o.name}
-          </button>
-        ))}
+        {outlets
+          .filter((o) => o.id !== currentBranch.id)
+          .map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setSelectedOutlet(o.id)}
+              className={`category-pill ${selectedOutlet === o.id ? 'active' : ''}`}
+            >
+              {o.name}
+            </button>
+          ))}
       </div>
 
       {/* Real-time Reserved Bookings */}

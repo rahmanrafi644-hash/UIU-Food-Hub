@@ -14,6 +14,8 @@ import {
   AppNotification,
   ReportCategory,
   ReportStatus,
+  ChatMessage,
+  OutletOperationalStatus,
 } from '../types';
 import {
   INITIAL_OUTLETS,
@@ -22,16 +24,19 @@ import {
   calculateStockStatus,
 } from '../data/initialData';
 
-const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V2';
+const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V3';
 
 interface AppContextType {
-  // Auth
+  // Auth & Outlet Scoping
   user: User | null;
-  login: (email: string, role: 'student' | 'vendor') => boolean;
+  login: (email: string, role: 'student' | 'vendor', outletId?: string) => boolean;
   logout: () => void;
+  activeVendorOutlet: CampusOutlet | null;
+  switchVendorOutlet: (outletId: string) => void;
 
   // Data
   outlets: CampusOutlet[];
+  updateOutletOperationalStatus: (outletId: string, status: OutletOperationalStatus) => void;
   inventory: FoodItem[];
   tables: CampusTable[];
   cart: CartItem[];
@@ -39,6 +44,7 @@ interface AppContextType {
   tableBookings: TableBooking[];
   reports: CustomerReport[];
   notifications: AppNotification[];
+  messages: ChatMessage[];
 
   // Cart operations
   addToCart: (item: FoodItem, quantity?: number) => { success: boolean; message?: string };
@@ -55,8 +61,10 @@ interface AppContextType {
     pickupDate?: string;
     pickupTime?: string;
     paymentMethod: PaymentMethod;
-  }) => { success: boolean; orderId?: string; error?: string };
+    specialInstructions?: string;
+  }) => { success: boolean; orderId?: string; pickupPin?: string; error?: string };
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  verifyPickupPin: (orderId: string, enteredPin: string) => { success: boolean; error?: string };
 
   // Inventory & Restock
   addStockIntake: (itemId: string, quantity: number) => void;
@@ -80,6 +88,15 @@ interface AppContextType {
     description: string;
   }) => { success: boolean };
   updateReportStatus: (reportId: string, status: ReportStatus) => void;
+
+  // Direct Student-to-Outlet Messaging
+  sendChatMessage: (params: {
+    outletId: string;
+    message: string;
+    senderRole: 'student' | 'vendor';
+    orderId?: string;
+  }) => void;
+  markMessagesAsRead: (outletId: string) => void;
 
   // Notifications
   markNotificationAsRead: (id: string) => void;
@@ -106,6 +123,7 @@ const INITIAL_DEMO_ORDERS: Order[] = [
     subtotal: 340,
     total: 340,
     pickupType: 'ASAP',
+    pickupPin: '4821',
     paymentMethod: 'bKash',
     status: 'Completed',
     createdAt: new Date(Date.now() - 45 * 60000).toISOString(),
@@ -124,6 +142,7 @@ const INITIAL_DEMO_ORDERS: Order[] = [
     subtotal: 300,
     total: 300,
     pickupType: 'ASAP',
+    pickupPin: '7134',
     paymentMethod: 'Nagad',
     status: 'Ready',
     createdAt: new Date(Date.now() - 20 * 60000).toISOString(),
@@ -144,6 +163,8 @@ const INITIAL_DEMO_ORDERS: Order[] = [
     pickupType: 'Schedule Pickup',
     pickupDate: 'Today',
     pickupTime: '1:45 PM',
+    pickupPin: '9523',
+    specialInstructions: 'Extra spicy chili sauce on the side please.',
     paymentMethod: 'Cash',
     status: 'Preparing',
     createdAt: new Date(Date.now() - 15 * 60000).toISOString(),
@@ -172,8 +193,45 @@ const INITIAL_DEMO_NOTIFICATIONS: AppNotification[] = [
   },
 ];
 
+const INITIAL_DEMO_MESSAGES: ChatMessage[] = [
+  {
+    id: 'msg-1',
+    studentId: 'stu-1',
+    studentName: 'Arafat Rahman',
+    outletId: 'khans-kitchen',
+    outletName: "Khan's Kitchen",
+    orderId: 'UIU-ORD-1001',
+    senderRole: 'student',
+    message: 'Hi, is Chicken Fry freshly prepared right now?',
+    timestamp: new Date(Date.now() - 35 * 60000).toISOString(),
+    isRead: true,
+  },
+  {
+    id: 'msg-2',
+    studentId: 'stu-1',
+    studentName: 'Arafat Rahman',
+    outletId: 'khans-kitchen',
+    outletName: "Khan's Kitchen",
+    orderId: 'UIU-ORD-1001',
+    senderRole: 'vendor',
+    message: 'Yes Arafat! Just took hot Chicken Fry out of the fryer 3 mins ago.',
+    timestamp: new Date(Date.now() - 32 * 60000).toISOString(),
+    isRead: true,
+  },
+  {
+    id: 'msg-3',
+    studentId: 'stu-uiu-01',
+    studentName: 'Sayed Rafy (Student)',
+    outletId: 'brew',
+    outletName: 'Brew',
+    senderRole: 'student',
+    message: 'Hello Brew team, do you have cold coffee available today?',
+    timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
+    isRead: false,
+  },
+];
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load initial persistent state if available
   const loadState = () => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -189,13 +247,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const persisted = loadState();
 
   const [user, setUser] = useState<User | null>(persisted?.user || null);
-  const [outlets] = useState<CampusOutlet[]>(INITIAL_OUTLETS);
+  const [outlets, setOutlets] = useState<CampusOutlet[]>(persisted?.outlets || INITIAL_OUTLETS);
   const [inventory, setInventory] = useState<FoodItem[]>(persisted?.inventory || INITIAL_FOOD_ITEMS);
   const [tables, setTables] = useState<CampusTable[]>(persisted?.tables || INITIAL_TABLES);
   const [cart, setCart] = useState<CartItem[]>(persisted?.cart || []);
   const [orders, setOrders] = useState<Order[]>(persisted?.orders || INITIAL_DEMO_ORDERS);
   const [tableBookings, setTableBookings] = useState<TableBooking[]>(persisted?.tableBookings || []);
   const [reports, setReports] = useState<CustomerReport[]>(persisted?.reports || []);
+  const [messages, setMessages] = useState<ChatMessage[]>(persisted?.messages || INITIAL_DEMO_MESSAGES);
   const [notifications, setNotifications] = useState<AppNotification[]>(
     persisted?.notifications || INITIAL_DEMO_NOTIFICATIONS
   );
@@ -207,22 +266,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         STORAGE_KEY,
         JSON.stringify({
           user,
+          outlets,
           inventory,
           tables,
           cart,
           orders,
           tableBookings,
           reports,
+          messages,
           notifications,
         })
       );
     } catch (e) {
       console.error('Error persisting state to localStorage:', e);
     }
-  }, [user, inventory, tables, cart, orders, tableBookings, reports, notifications]);
+  }, [user, outlets, inventory, tables, cart, orders, tableBookings, reports, messages, notifications]);
 
-  // Auth
-  const login = (email: string, role: 'student' | 'vendor'): boolean => {
+  // Active vendor outlet derived from user state
+  const activeVendorOutlet =
+    user?.role === 'vendor'
+      ? outlets.find((o) => o.id === user.vendorOutletId) || outlets[0]
+      : null;
+
+  // Auth & Branch Selection
+  const login = (email: string, role: 'student' | 'vendor', selectedOutletId?: string): boolean => {
     if (role === 'student') {
       setUser({
         id: 'stu-uiu-01',
@@ -233,24 +300,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         phone: '+880 1711-223344',
       });
     } else {
+      const targetOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
       setUser({
-        id: 'ven-uiu-01',
-        name: "Khan's Kitchen & Campus Vendors",
+        id: `ven-${targetOutlet.id}`,
+        name: `${targetOutlet.name} Manager`,
         email: email || 'vendor@uiu.ac.bd',
         role: 'vendor',
         phone: '+880 1812-998877',
+        vendorOutletId: targetOutlet.id,
+        vendorOutletName: targetOutlet.name,
       });
     }
     return true;
+  };
+
+  const switchVendorOutlet = (outletId: string) => {
+    const target = outlets.find((o) => o.id === outletId);
+    if (target && user?.role === 'vendor') {
+      setUser({
+        ...user,
+        name: `${target.name} Manager`,
+        vendorOutletId: target.id,
+        vendorOutletName: target.name,
+      });
+    }
   };
 
   const logout = () => {
     setUser(null);
   };
 
+  const updateOutletOperationalStatus = (outletId: string, status: OutletOperationalStatus) => {
+    setOutlets((prev) =>
+      prev.map((o) => (o.id === outletId ? { ...o, operationalStatus: status } : o))
+    );
+  };
+
   // Cart operations
   const addToCart = (item: FoodItem, quantity: number = 1): { success: boolean; message?: string } => {
-    // Check current live inventory
     const currentItem = inventory.find((i) => i.id === item.id);
     if (!currentItem || currentItem.stock <= 0) {
       return { success: false, message: 'Item is currently Sold Out!' };
@@ -297,27 +384,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const clearCart = () => setCart([]);
 
   const cartSubtotal = cart.reduce((sum, c) => sum + c.item.price * c.quantity, 0);
-  const cartTotal = cartSubtotal; // Prototype total
+  const cartTotal = cartSubtotal;
 
-  // Create Order - Deducts from shared inventory!
+  // Create Order
   const createOrder = ({
     outletId,
     pickupType,
     pickupDate,
     pickupTime,
     paymentMethod,
+    specialInstructions,
   }: {
     outletId: string;
     pickupType: PickupType;
     pickupDate?: string;
     pickupTime?: string;
     paymentMethod: PaymentMethod;
+    specialInstructions?: string;
   }) => {
     if (cart.length === 0) {
       return { success: false, error: 'Cart is empty' };
     }
 
-    // Verify stock availability
     for (const c of cart) {
       const liveItem = inventory.find((i) => i.id === c.item.id);
       if (!liveItem || liveItem.stock < c.quantity) {
@@ -330,8 +418,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
     const newOrderId = `UIU-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newPin = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // 1. Deduct from SHARED INVENTORY & recalculate stock status
+    // 1. Deduct from shared inventory
     setInventory((prev) =>
       prev.map((item) => {
         const ordered = cart.find((c) => c.item.id === item.id);
@@ -347,7 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // 2. Create the real order record
+    // 2. Create the real order record with PIN and instructions
     const newOrder: Order = {
       id: newOrderId,
       studentId: user?.studentId || '011211048',
@@ -360,6 +449,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pickupType,
       pickupDate: pickupType === 'Schedule Pickup' ? pickupDate : 'Today',
       pickupTime: pickupType === 'Schedule Pickup' ? pickupTime : 'Within 15 mins (ASAP)',
+      pickupPin: newPin,
+      specialInstructions,
       paymentMethod,
       status: 'Placed',
       createdAt: new Date().toISOString(),
@@ -368,12 +459,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setOrders((prev) => [newOrder, ...prev]);
 
-    // 3. Add student & vendor notifications
+    // 3. Notifications
     const studentNotif: AppNotification = {
       id: `notif-${Date.now()}-1`,
       recipientRole: 'student',
       title: 'Order Placed!',
-      message: `Your order #${newOrderId} at ${targetOutlet.name} is placed. Pick up: ${newOrder.pickupTime}.`,
+      message: `Order #${newOrderId} placed at ${targetOutlet.name}. Pickup PIN: ${newPin}.`,
       type: 'order',
       timestamp: new Date().toISOString(),
       isRead: false,
@@ -382,19 +473,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const vendorNotif: AppNotification = {
       id: `notif-${Date.now()}-2`,
       recipientRole: 'vendor',
-      title: 'New Student Order Incoming',
-      message: `Order #${newOrderId} received from ${newOrder.studentName} for ${newOrder.items.length} items.`,
+      title: `New Order #${newOrderId}`,
+      message: `Order #${newOrderId} received from ${newOrder.studentName} (${newOrder.items.length} items).`,
       type: 'order',
       timestamp: new Date().toISOString(),
       isRead: false,
     };
 
     setNotifications((prev) => [studentNotif, vendorNotif, ...prev]);
-
-    // 4. Clear cart
     clearCart();
 
-    return { success: true, orderId: newOrderId };
+    return { success: true, orderId: newOrderId, pickupPin: newPin };
   };
 
   // Vendor updates order status
@@ -411,9 +500,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         title: `Order Status: ${status}`,
         message:
           status === 'Ready'
-            ? `Your order #${orderId} is READY for pickup at ${targetOrder.outletName} counter!`
+            ? `Your order #${orderId} is READY for pickup at ${targetOrder.outletName}! Show PIN: ${targetOrder.pickupPin}.`
             : status === 'Preparing'
-            ? `The chef has started preparing your order #${orderId}.`
+            ? `The chef at ${targetOrder.outletName} has started preparing your order #${orderId}.`
             : `Order #${orderId} marked as ${status}.`,
         type: 'order',
         timestamp: new Date().toISOString(),
@@ -423,7 +512,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Vendor Stock Intake (Add stock)
+  // Verify PIN to hand over order
+  const verifyPickupPin = (orderId: string, enteredPin: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) {
+      return { success: false, error: 'Order not found' };
+    }
+    if (order.pickupPin.trim() === enteredPin.trim()) {
+      updateOrderStatus(orderId, 'Completed');
+      return { success: true };
+    }
+    return { success: false, error: `Invalid PIN. Please check student order screen.` };
+  };
+
+  // Direct Student-to-Outlet Messaging
+  const sendChatMessage = ({
+    outletId,
+    message,
+    senderRole,
+    orderId,
+  }: {
+    outletId: string;
+    message: string;
+    senderRole: 'student' | 'vendor';
+    orderId?: string;
+  }) => {
+    const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
+    const newMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      studentId: user?.studentId || 'stu-uiu-01',
+      studentName: user?.name || 'UIU Student',
+      outletId: targetOutlet.id,
+      outletName: targetOutlet.name,
+      orderId,
+      senderRole,
+      message,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+    };
+
+    setMessages((prev) => [...prev, newMsg]);
+
+    // Send notification to opposite role
+    const notif: AppNotification = {
+      id: `notif-chat-${Date.now()}`,
+      recipientRole: senderRole === 'student' ? 'vendor' : 'student',
+      title:
+        senderRole === 'student'
+          ? `Message from ${newMsg.studentName}`
+          : `Reply from ${targetOutlet.name}`,
+      message: message.slice(0, 50),
+      type: 'report',
+      timestamp: new Date().toISOString(),
+      isRead: false,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
+  const markMessagesAsRead = (outletId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.outletId === outletId ? { ...m, isRead: true } : m))
+    );
+  };
+
+  // Vendor Stock Intake
   const addStockIntake = (itemId: string, quantity: number) => {
     if (quantity <= 0) return;
 
@@ -504,7 +656,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     guests: number;
     phone: string;
   }) => {
-    // Check conflicts
     const conflict = tableBookings.find(
       (b) =>
         b.outletId === outletId &&
@@ -540,12 +691,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTableBookings((prev) => [newBooking, ...prev]);
 
-    // Update table status in table list
     setTables((prev) =>
       prev.map((t) => (t.outletId === outletId && t.tableNumber === tableNumber ? { ...t, status: 'Reserved' } : t))
     );
 
-    // Notifications
     const studentNotif: AppNotification = {
       id: `notif-tb-${Date.now()}`,
       recipientRole: 'student',
@@ -603,7 +752,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, status } : r)));
   };
 
-  // Notifications
   const markNotificationAsRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
   };
@@ -612,15 +760,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications([]);
   };
 
-  // Reset Demo Data: Restores exact starting conditions for presentation
+  // Reset Demo Data
   const resetDemoData = () => {
     localStorage.removeItem(STORAGE_KEY);
+    setOutlets(INITIAL_OUTLETS);
     setInventory(INITIAL_FOOD_ITEMS);
     setTables(INITIAL_TABLES);
     setCart([]);
     setOrders(INITIAL_DEMO_ORDERS);
     setTableBookings([]);
     setReports([]);
+    setMessages(INITIAL_DEMO_MESSAGES);
     setNotifications(INITIAL_DEMO_NOTIFICATIONS);
   };
 
@@ -630,13 +780,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         user,
         login,
         logout,
+        activeVendorOutlet,
+        switchVendorOutlet,
         outlets,
+        updateOutletOperationalStatus,
         inventory,
         tables,
         cart,
         orders,
         tableBookings,
         reports,
+        messages,
         notifications,
         addToCart,
         removeFromCart,
@@ -646,6 +800,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cartTotal,
         createOrder,
         updateOrderStatus,
+        verifyPickupPin,
+        sendChatMessage,
+        markMessagesAsRead,
         addStockIntake,
         applyAiRestockRecommendation,
         bookTable,

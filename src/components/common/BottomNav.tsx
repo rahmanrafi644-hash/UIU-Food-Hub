@@ -13,6 +13,7 @@ import {
   Sparkles,
   ClipboardList,
   AlertCircle,
+  MessageSquare,
 } from 'lucide-react';
 
 interface BottomNavProps {
@@ -20,11 +21,14 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ onOpenCart }) => {
-  const { user, cart, reports } = useApp();
+  const { user, cart, reports, messages, activeVendorOutlet } = useApp();
   const location = useLocation();
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const openReportsCount = reports.filter((r) => r.status === 'Open').length;
+  const currentOutletId = user?.vendorOutletId || activeVendorOutlet?.id || 'khans-kitchen';
+  const unreadMessagesCount = messages.filter(
+    (m) => m.outletId === currentOutletId && !m.isRead && m.senderRole === 'student'
+  ).length;
 
   if (user?.role === 'vendor') {
     const vendorLinks = [
@@ -32,8 +36,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ onOpenCart }) => {
       { to: '/vendor/orders', label: 'Orders', icon: Clock },
       { to: '/vendor/inventory', label: 'Stock', icon: Boxes },
       { to: '/vendor/ai', label: 'AI Demand', icon: Sparkles, highlight: true },
+      { to: '/vendor/messages', label: 'Chats', icon: MessageSquare, badge: unreadMessagesCount },
       { to: '/vendor/tables', label: 'Tables', icon: CalendarDays },
-      { to: '/vendor/reports', label: 'Issues', icon: AlertCircle, badge: openReportsCount },
     ];
 
     return (

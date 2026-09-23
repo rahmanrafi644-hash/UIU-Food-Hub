@@ -4,8 +4,9 @@ import { useApp } from '../../context/AppContext';
 import { FoodItem } from '../../types';
 import { FoodCard } from '../../components/student/FoodCard';
 import { FoodDetailModal } from '../../components/student/FoodDetailModal';
-import { ArrowLeft, MapPin, Clock, Star, Search, Calendar } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Star, Search, Calendar, MessageSquare, Activity } from 'lucide-react';
 import { TableBookingModal } from '../../components/student/TableBookingModal';
+import { ChatDrawerModal } from '../../components/chat/ChatDrawerModal';
 
 export const OutletDetailPage: React.FC = () => {
   const { outletId } = useParams<{ outletId: string }>();
@@ -16,6 +17,7 @@ export const OutletDetailPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedFoodItem, setSelectedFoodItem] = useState<FoodItem | null>(null);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   const outlet = outlets.find((o) => o.id === outletId) || outlets[0];
   const outletItems = inventory.filter((i) => i.outletId === outlet.id);
@@ -28,10 +30,12 @@ export const OutletDetailPage: React.FC = () => {
     return matchesCat && matchesSearch;
   });
 
+  const operationalStatus = outlet.operationalStatus || 'Open';
+
   return (
     <div className="app-main" style={{ padding: 0 }}>
       {/* Outlet Banner Header */}
-      <div style={{ position: 'relative', width: '100%', height: 200 }}>
+      <div style={{ position: 'relative', width: '100%', height: 210 }}>
         <img
           src={outlet.image}
           alt={outlet.name}
@@ -41,7 +45,7 @@ export const OutletDetailPage: React.FC = () => {
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.8) 100%)',
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.85) 100%)',
           }}
         />
 
@@ -61,11 +65,29 @@ export const OutletDetailPage: React.FC = () => {
           <ArrowLeft size={18} />
         </button>
 
+        {/* Direct Chat Button on Banner */}
+        <button
+          onClick={() => setIsChatOpen(true)}
+          className="btn-icon-circle"
+          style={{
+            position: 'absolute',
+            top: 14,
+            right: 14,
+            background: 'rgba(255,255,255,0.9)',
+            backdropFilter: 'blur(8px)',
+            border: 'none',
+            color: 'var(--primary)',
+          }}
+          title="Direct Message to Kitchen"
+        >
+          <MessageSquare size={18} />
+        </button>
+
         {/* Title & Info Overlay */}
         <div
           style={{
             position: 'absolute',
-            bottom: 16,
+            bottom: 14,
             left: 18,
             right: 18,
             color: 'white',
@@ -74,16 +96,30 @@ export const OutletDetailPage: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <span
               style={{
-                background: 'var(--primary)',
+                background:
+                  operationalStatus === 'Open'
+                    ? '#059669'
+                    : operationalStatus === 'Busy'
+                    ? '#D97706'
+                    : '#DC2626',
                 color: 'white',
                 fontSize: 10,
                 fontWeight: 800,
                 padding: '2px 8px',
                 borderRadius: 9999,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
               }}
             >
-              CAMPUS OUTLET
+              <Activity size={11} />
+              {operationalStatus === 'Open'
+                ? 'OPEN FOR ORDERS'
+                : operationalStatus === 'Busy'
+                ? 'KITCHEN BUSY (+15m)'
+                : 'ORDERS PAUSED'}
             </span>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, fontWeight: 700 }}>
               <Star size={12} fill="#FBBF24" color="#FBBF24" />
               {outlet.rating}
@@ -104,27 +140,21 @@ export const OutletDetailPage: React.FC = () => {
       </div>
 
       {/* Body Content */}
-      <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Table Booking Banner for this Outlet */}
-        <div
-          style={{
-            background: 'var(--primary-light)',
-            border: '1px solid #FED7AA',
-            borderRadius: 16,
-            padding: '12px 14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div>
-            <h4 style={{ fontSize: 13, fontWeight: 800, color: '#C25700' }}>Dining in at {outlet.name}?</h4>
-            <p style={{ fontSize: 11, color: '#7C2D12' }}>Book a table in advance to avoid noon rush.</p>
-          </div>
+      <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Table Booking & Direct Message Action Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button
+            className="btn-secondary"
+            onClick={() => setIsChatOpen(true)}
+            style={{ padding: '10px 12px', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            <MessageSquare size={15} color="var(--primary)" /> Message Outlet
+          </button>
+
           <button
             className="btn-primary"
             onClick={() => setIsBookingOpen(true)}
-            style={{ padding: '8px 14px', fontSize: 12 }}
+            style={{ padding: '10px 12px', fontSize: 12 }}
           >
             <Calendar size={14} /> Book Table
           </button>
@@ -193,6 +223,12 @@ export const OutletDetailPage: React.FC = () => {
         isOpen={isBookingOpen}
         onClose={() => setIsBookingOpen(false)}
         preselectedOutletId={outlet.id}
+      />
+
+      <ChatDrawerModal
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        targetOutletId={outlet.id}
       />
     </div>
   );

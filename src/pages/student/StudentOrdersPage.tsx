@@ -1,10 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { OrderStatus } from '../../types';
-import { Clock, CheckCircle2, ChefHat, Sparkles, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { ChatDrawerModal } from '../../components/chat/ChatDrawerModal';
+import {
+  Clock,
+  CheckCircle2,
+  ChefHat,
+  Sparkles,
+  ShoppingBag,
+  ShieldCheck,
+  KeyRound,
+  MessageSquare,
+} from 'lucide-react';
 
 export const StudentOrdersPage: React.FC = () => {
   const { orders } = useApp();
+  const [selectedChatOutletId, setSelectedChatOutletId] = useState<string | null>(null);
+  const [selectedChatOrderId, setSelectedChatOrderId] = useState<string | undefined>(undefined);
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -44,7 +56,7 @@ export const StudentOrdersPage: React.FC = () => {
       <div>
         <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Your Orders</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          Real-time synchronized order tracking & past history
+          Real-time synchronized tracking, pickup PINs & outlet messaging
         </p>
       </div>
 
@@ -109,6 +121,28 @@ export const StudentOrdersPage: React.FC = () => {
                   </span>
                 </div>
 
+                {/* Pickup PIN Verification Banner (Essential for crowded cafeterias) */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: '#FEF3C7',
+                    padding: '8px 12px',
+                    borderRadius: 12,
+                    border: '1px solid #FDE68A',
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <KeyRound size={15} color="#92400E" />
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#92400E' }}>
+                      Pickup PIN: <span style={{ letterSpacing: 1.5, fontSize: 14 }}>{order.pickupPin}</span>
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#B45309', fontWeight: 600 }}>Show to vendor</span>
+                </div>
+
                 {/* Progress Steps for Live Orders */}
                 {isLive && (
                   <div
@@ -116,7 +150,7 @@ export const StudentOrdersPage: React.FC = () => {
                       display: 'grid',
                       gridTemplateColumns: 'repeat(3, 1fr)',
                       gap: 4,
-                      margin: '8px 0 12px 0',
+                      margin: '4px 0 12px 0',
                     }}
                   >
                     {[
@@ -175,6 +209,23 @@ export const StudentOrdersPage: React.FC = () => {
                   ))}
                 </div>
 
+                {/* Special Instructions if provided */}
+                {order.specialInstructions && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: '6px 10px',
+                      borderRadius: 8,
+                      background: '#FFFBEB',
+                      border: '1px solid #FDE68A',
+                      fontSize: 11,
+                      color: '#92400E',
+                    }}
+                  >
+                    <strong>Special Note:</strong> &ldquo;{order.specialInstructions}&rdquo;
+                  </div>
+                )}
+
                 {/* Pickup & Payment Details */}
                 <div
                   style={{
@@ -201,10 +252,31 @@ export const StudentOrdersPage: React.FC = () => {
                     <strong style={{ fontSize: 16, color: 'var(--primary)' }}>৳{order.total}</strong>
                   </div>
                 </div>
+
+                {/* Direct Message Outlet Button */}
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setSelectedChatOutletId(order.outletId);
+                    setSelectedChatOrderId(order.id);
+                  }}
+                  style={{ width: '100%', marginTop: 10, padding: '9px', fontSize: 12 }}
+                >
+                  <MessageSquare size={14} color="var(--primary)" /> Message {order.outletName} regarding Order
+                </button>
               </div>
             );
           })}
         </div>
+      )}
+
+      {selectedChatOutletId && (
+        <ChatDrawerModal
+          isOpen={true}
+          onClose={() => setSelectedChatOutletId(null)}
+          targetOutletId={selectedChatOutletId}
+          orderId={selectedChatOrderId}
+        />
       )}
     </div>
   );

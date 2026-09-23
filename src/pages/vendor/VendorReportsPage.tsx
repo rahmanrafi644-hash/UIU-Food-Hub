@@ -13,17 +13,25 @@ import {
 } from 'lucide-react';
 
 export const VendorReportsPage: React.FC = () => {
-  const { reports, updateReportStatus, orders, inventory } = useApp();
+  const { reports, updateReportStatus, orders, inventory, activeVendorOutlet, outlets } = useApp();
+  const currentBranch = activeVendorOutlet || outlets[0];
   const [activeTab, setActiveTab] = useState<'issues' | 'analytics'>('issues');
+  const [showAllOutlets, setShowAllOutlets] = useState(false);
 
-  const openIssuesCount = reports.filter((r) => r.status === 'Open').length;
+  const branchReports = reports.filter(
+    (r) => showAllOutlets || r.outletId === currentBranch.id
+  );
+  const openIssuesCount = branchReports.filter((r) => r.status === 'Open').length;
 
   return (
     <div className="app-main">
       <div>
+        <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase' }}>
+          {currentBranch.name} Portal
+        </span>
         <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>Issues & Analytics</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          Student feedback resolution & campus dining insights
+          Student feedback resolution & dining velocity for {currentBranch.name}
         </p>
       </div>
 
@@ -84,7 +92,7 @@ export const VendorReportsPage: React.FC = () => {
       {/* TAB 1: Issues Management */}
       {activeTab === 'issues' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {reports.length === 0 ? (
+          {branchReports.length === 0 ? (
             <div
               className="card-base"
               style={{
@@ -95,13 +103,13 @@ export const VendorReportsPage: React.FC = () => {
               }}
             >
               <CheckCircle size={32} color="#10B981" style={{ margin: '0 auto 8px auto' }} />
-              <h4 style={{ fontSize: 16, fontWeight: 800, color: '#065F46' }}>No Open Issues</h4>
+              <h4 style={{ fontSize: 16, fontWeight: 800, color: '#065F46' }}>No Open Issues for {currentBranch.name}</h4>
               <p style={{ fontSize: 12, color: '#047857' }}>
                 All student feedback tickets have been resolved or none have been submitted yet.
               </p>
             </div>
           ) : (
-            reports.map((report) => (
+            branchReports.map((report) => (
               <div
                 key={report.id}
                 className="card-base"

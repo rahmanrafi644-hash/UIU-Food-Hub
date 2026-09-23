@@ -17,11 +17,12 @@ import {
 } from 'lucide-react';
 
 export const VendorAiAssistantPage: React.FC = () => {
-  const { inventory, orders, outlets } = useApp();
+  const { inventory, orders, outlets, activeVendorOutlet } = useApp();
+  const currentBranch = activeVendorOutlet || outlets[0];
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AiDemandAnalysis | null>(null);
-  const [selectedOutlet, setSelectedOutlet] = useState<string>('all');
+  const [selectedOutlet, setSelectedOutlet] = useState<string>(currentBranch.id);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleRunAnalysis = async () => {
@@ -54,27 +55,35 @@ export const VendorAiAssistantPage: React.FC = () => {
         </div>
         <h2 style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.5 }}>AI Demand Assistant</h2>
         <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-          Real-time demand prediction & agentic restocking recommendations
+          Forecasting & restock recommendations for <strong>{currentBranch.name}</strong>
         </p>
       </div>
 
       {/* Outlet Selector */}
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', scrollbarWidth: 'none' }}>
         <button
+          onClick={() => setSelectedOutlet(currentBranch.id)}
+          className={`category-pill ${selectedOutlet === currentBranch.id ? 'active' : ''}`}
+        >
+          📍 {currentBranch.name} (Active)
+        </button>
+        <button
           onClick={() => setSelectedOutlet('all')}
           className={`category-pill ${selectedOutlet === 'all' ? 'active' : ''}`}
         >
-          All Outlets
+          All Campus Outlets
         </button>
-        {outlets.map((o) => (
-          <button
-            key={o.id}
-            onClick={() => setSelectedOutlet(o.id)}
-            className={`category-pill ${selectedOutlet === o.id ? 'active' : ''}`}
-          >
-            {o.name}
-          </button>
-        ))}
+        {outlets
+          .filter((o) => o.id !== currentBranch.id)
+          .map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setSelectedOutlet(o.id)}
+              className={`category-pill ${selectedOutlet === o.id ? 'active' : ''}`}
+            >
+              {o.name}
+            </button>
+          ))}
       </div>
 
       {/* Primary Action Card */}

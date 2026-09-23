@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
-import { UtensilsCrossed, GraduationCap, Store, ShieldCheck, ArrowRight } from 'lucide-react';
+import { UtensilsCrossed, GraduationCap, Store, ShieldCheck, ArrowRight, MapPin } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { login } = useApp();
+  const { login, outlets } = useApp();
   const navigate = useNavigate();
 
   const [role, setRole] = useState<'student' | 'vendor'>('student');
+  const [selectedOutletId, setSelectedOutletId] = useState('khans-kitchen');
   const [email, setEmail] = useState('student@uiu.ac.bd');
   const [password, setPassword] = useState('demo123');
 
@@ -22,13 +23,15 @@ export const LoginPage: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    login(email, role);
+    login(email, role, role === 'vendor' ? selectedOutletId : undefined);
     if (role === 'vendor') {
       navigate('/vendor');
     } else {
       navigate('/');
     }
   };
+
+  const selectedOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
 
   return (
     <div
@@ -42,7 +45,7 @@ export const LoginPage: React.FC = () => {
       }}
     >
       {/* Brand Hero */}
-      <div style={{ textAlign: 'center', marginBottom: 28 }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
         <div
           style={{
             width: 64,
@@ -73,7 +76,7 @@ export const LoginPage: React.FC = () => {
         className="card-base"
         style={{
           width: '100%',
-          maxWidth: 360,
+          maxWidth: 380,
           padding: 24,
           borderRadius: 24,
         }}
@@ -87,7 +90,7 @@ export const LoginPage: React.FC = () => {
             background: 'var(--bg-app)',
             padding: 4,
             borderRadius: 14,
-            marginBottom: 20,
+            marginBottom: 18,
           }}
         >
           <button
@@ -135,12 +138,65 @@ export const LoginPage: React.FC = () => {
             }}
           >
             <Store size={16} />
-            Vendor
+            Vendor Branch
           </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Branch / Outlet Selector for Vendor */}
+          {role === 'vendor' && (
+            <div
+              style={{
+                background: 'var(--primary-light)',
+                border: '1.5px solid #FED7AA',
+                padding: '12px 14px',
+                borderRadius: 16,
+              }}
+            >
+              <label
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: '#9A3412',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  marginBottom: 6,
+                }}
+              >
+                <Store size={14} /> Select Your Outlet / Branch
+              </label>
+
+              <select
+                value={selectedOutletId}
+                onChange={(e) => setSelectedOutletId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px solid #FDBA74',
+                  background: 'white',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: 'var(--text-main)',
+                  outline: 'none',
+                }}
+              >
+                {outlets.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} ({o.location})
+                  </option>
+                ))}
+              </select>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: '#C25700' }}>
+                <MapPin size={11} />
+                <span>Operating dashboard will be tuned specifically to <strong>{selectedOutlet.name}</strong>.</span>
+              </div>
+            </div>
+          )}
+
           <div>
             <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 4 }}>
               University Email
@@ -206,9 +262,9 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             className="btn-primary"
-            style={{ width: '100%', padding: 14, fontSize: 14, marginTop: 6 }}
+            style={{ width: '100%', padding: 14, fontSize: 14, marginTop: 4 }}
           >
-            Sign In as {role === 'student' ? 'Student' : 'Vendor'} <ArrowRight size={16} />
+            Sign In as {role === 'student' ? 'Student' : `${selectedOutlet.name} Vendor`} <ArrowRight size={16} />
           </button>
         </form>
       </div>
