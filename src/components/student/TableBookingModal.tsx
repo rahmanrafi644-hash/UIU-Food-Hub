@@ -31,11 +31,11 @@ export const TableBookingModal: React.FC<TableBookingModalProps> = ({
 
   const currentOutletTables = tables.filter((t) => t.outletId === selectedOutletId);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    const result = bookTable({
+    const result = await bookTable({
       outletId: selectedOutletId,
       tableNumber: selectedTable,
       date,

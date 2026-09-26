@@ -9,6 +9,7 @@ import { CheckoutModal } from './components/student/CheckoutModal';
 
 // Pages
 import { LoginPage } from './pages/auth/LoginPage';
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage';
 import { StudentHomePage } from './pages/student/StudentHomePage';
 import { StudentExplorePage } from './pages/student/StudentExplorePage';
 import { OutletDetailPage } from './pages/student/OutletDetailPage';
@@ -24,6 +25,22 @@ import { VendorTablesPage } from './pages/vendor/VendorTablesPage';
 import { VendorReportsPage } from './pages/vendor/VendorReportsPage';
 import { VendorMessagesPage } from './pages/vendor/VendorMessagesPage';
 
+// Strict Role Guard for Students
+const RequireStudent: React.FC<{ children: React.ReactElement }> = ({ children }) => {
+  const { user } = useApp();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'student') return <Navigate to="/vendor" replace />;
+  return children;
+};
+
+// Strict Role Guard for Vendors
+const RequireVendor: React.FC<{ children: React.ReactElement }> = ({ children }) => {
+  const { user } = useApp();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'vendor') return <Navigate to="/" replace />;
+  return children;
+};
+
 const AppLayout: React.FC = () => {
   const { user } = useApp();
   const location = useLocation();
@@ -31,93 +48,130 @@ const AppLayout: React.FC = () => {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  const isAuthPage = location.pathname === '/login';
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/reset-password';
 
   return (
     <DeviceFrame>
       {!isAuthPage && user && <Header />}
 
       <Routes>
-        {/* Auth */}
+        {/* Auth Routes */}
         <Route
           path="/login"
           element={!user ? <LoginPage /> : <Navigate to={user.role === 'vendor' ? '/vendor' : '/'} replace />}
         />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-        {/* Student Routes */}
+        {/* Student Routes (Protected - Student Only) */}
         <Route
           path="/"
           element={
-            !user ? (
-              <Navigate to="/login" replace />
-            ) : user.role === 'vendor' ? (
-              <Navigate to="/vendor" replace />
-            ) : (
+            <RequireStudent>
               <StudentHomePage />
-            )
+            </RequireStudent>
           }
         />
         <Route
           path="/explore"
-          element={!user ? <Navigate to="/login" replace /> : <StudentExplorePage />}
+          element={
+            <RequireStudent>
+              <StudentExplorePage />
+            </RequireStudent>
+          }
         />
         <Route
           path="/outlet/:outletId"
-          element={!user ? <Navigate to="/login" replace /> : <OutletDetailPage />}
+          element={
+            <RequireStudent>
+              <OutletDetailPage />
+            </RequireStudent>
+          }
         />
         <Route
           path="/orders"
-          element={!user ? <Navigate to="/login" replace /> : <StudentOrdersPage />}
+          element={
+            <RequireStudent>
+              <StudentOrdersPage />
+            </RequireStudent>
+          }
         />
         <Route
           path="/tables"
-          element={!user ? <Navigate to="/login" replace /> : <StudentTablesPage />}
+          element={
+            <RequireStudent>
+              <StudentTablesPage />
+            </RequireStudent>
+          }
         />
         <Route
           path="/profile"
-          element={!user ? <Navigate to="/login" replace /> : <StudentProfilePage />}
+          element={
+            <RequireStudent>
+              <StudentProfilePage />
+            </RequireStudent>
+          }
         />
 
-        {/* Vendor Routes */}
+        {/* Vendor Routes (Protected - Vendor Only) */}
         <Route
           path="/vendor"
           element={
-            !user ? (
-              <Navigate to="/login" replace />
-            ) : user.role === 'student' ? (
-              <Navigate to="/" replace />
-            ) : (
+            <RequireVendor>
               <VendorDashboardPage />
-            )
+            </RequireVendor>
           }
         />
         <Route
           path="/vendor/orders"
-          element={!user ? <Navigate to="/login" replace /> : <VendorOrdersPage />}
+          element={
+            <RequireVendor>
+              <VendorOrdersPage />
+            </RequireVendor>
+          }
         />
         <Route
           path="/vendor/inventory"
-          element={!user ? <Navigate to="/login" replace /> : <VendorInventoryPage />}
+          element={
+            <RequireVendor>
+              <VendorInventoryPage />
+            </RequireVendor>
+          }
         />
         <Route
           path="/vendor/ai"
-          element={!user ? <Navigate to="/login" replace /> : <VendorAiAssistantPage />}
+          element={
+            <RequireVendor>
+              <VendorAiAssistantPage />
+            </RequireVendor>
+          }
         />
         <Route
           path="/vendor/tables"
-          element={!user ? <Navigate to="/login" replace /> : <VendorTablesPage />}
+          element={
+            <RequireVendor>
+              <VendorTablesPage />
+            </RequireVendor>
+          }
         />
         <Route
           path="/vendor/reports"
-          element={!user ? <Navigate to="/login" replace /> : <VendorReportsPage />}
+          element={
+            <RequireVendor>
+              <VendorReportsPage />
+            </RequireVendor>
+          }
         />
         <Route
           path="/vendor/messages"
-          element={!user ? <Navigate to="/login" replace /> : <VendorMessagesPage />}
+          element={
+            <RequireVendor>
+              <VendorMessagesPage />
+            </RequireVendor>
+          }
         />
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to={user?.role === 'vendor' ? '/vendor' : '/'} replace />} />
       </Routes>
 
       {/* Floating Bottom Nav */}
@@ -141,14 +195,14 @@ const AppLayout: React.FC = () => {
   );
 };
 
-export const App: React.FC = () => {
+export function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AppProvider>
         <AppLayout />
-      </BrowserRouter>
-    </AppProvider>
+      </AppProvider>
+    </BrowserRouter>
   );
-};
+}
 
 export default App;

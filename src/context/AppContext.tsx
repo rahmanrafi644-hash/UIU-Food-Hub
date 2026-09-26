@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   User,
   FoodItem,
@@ -16,6 +16,7 @@ import {
   ReportStatus,
   ChatMessage,
   OutletOperationalStatus,
+  UserRole,
 } from '../types';
 import {
   INITIAL_OUTLETS,
@@ -23,14 +24,25 @@ import {
   INITIAL_TABLES,
   calculateStockStatus,
 } from '../data/initialData';
+import {
+  supabase,
+  isSupabaseConfigured,
+  loginWithSupabase,
+  signOutSupabase,
+} from '../services/supabase';
 
-const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V3';
+const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V4';
 
 interface AppContextType {
   // Auth & Outlet Scoping
   user: User | null;
-  login: (email: string, role: 'student' | 'vendor', outletId?: string) => boolean;
-  logout: () => void;
+  login: (
+    email: string,
+    password?: string,
+    role?: 'student' | 'vendor',
+    outletId?: string
+  ) => Promise<{ success: boolean; isUnconfirmed?: boolean; error?: string }>;
+  logout: () => Promise<void>;
   activeVendorOutlet: CampusOutlet | null;
   switchVendorOutlet: (outletId: string) => void;
 
@@ -66,13 +78,13 @@ interface AppContextType {
     slotSecured?: boolean;
     paymentMethod: PaymentMethod;
     specialInstructions?: string;
-  }) => { success: boolean; orderId?: string; pickupPin?: string; error?: string };
-  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  }) => Promise<{ success: boolean; orderId?: string; pickupPin?: string; error?: string }>;
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   verifyPickupPin: (orderId: string, enteredPin: string) => { success: boolean; error?: string };
 
   // Inventory & Restock
-  addStockIntake: (itemId: string, quantity: number) => void;
-  applyAiRestockRecommendation: (itemName: string, outletName: string, refillAmount: number) => void;
+  addStockIntake: (itemId: string, quantity: number) => Promise<void>;
+  applyAiRestockRecommendation: (itemName: string, outletName: string, refillAmount: number) => Promise<void>;
 
   // Tables
   bookTable: (params: {
@@ -83,14 +95,14 @@ interface AppContextType {
     durationMinutes: number;
     guests: number;
     phone: string;
-  }) => { success: boolean; error?: string };
+  }) => Promise<{ success: boolean; error?: string }>;
 
   // Customer Reports
   submitReport: (params: {
     outletId: string;
     category: ReportCategory;
     description: string;
-  }) => { success: boolean };
+  }) => Promise<{ success: boolean }>;
   updateReportStatus: (reportId: string, status: ReportStatus) => void;
 
   // Direct Student-to-Outlet Messaging
@@ -99,7 +111,7 @@ interface AppContextType {
     message: string;
     senderRole: 'student' | 'vendor';
     orderId?: string;
-  }) => void;
+  }) => Promise<void>;
   markMessagesAsRead: (outletId: string) => void;
 
   // Notifications
@@ -112,11 +124,11 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Initial historical orders for realistic demand graph and vendor demonstration
+// Initial historical orders for realistic demand graph and demonstration
 const INITIAL_DEMO_ORDERS: Order[] = [
   {
-    id: 'UIU-ORD-1001',
-    studentId: 'stu-1',
+    id: 'ORD-1001',
+    studentId: 'stu-demo-01',
     studentName: 'Arafat Rahman',
     outletId: 'khans-kitchen',
     outletName: "Khan's Kitchen",
@@ -134,17 +146,17 @@ const INITIAL_DEMO_ORDERS: Order[] = [
     updatedAt: new Date(Date.now() - 25 * 60000).toISOString(),
   },
   {
-    id: 'UIU-ORD-1002',
-    studentId: 'stu-2',
+    id: 'ORD-1002',
+    studentId: 'stu-demo-02',
     studentName: 'Nusrat Jahan',
     outletId: 'brew',
     outletName: 'Brew',
     items: [
-      { item: INITIAL_FOOD_ITEMS.find((f) => f.id === 'brew-cappuccino')!, quantity: 1 },
       { item: INITIAL_FOOD_ITEMS.find((f) => f.id === 'brew-cold-coffee')!, quantity: 1 },
+      { item: INITIAL_FOOD_ITEMS.find((f) => f.id === 'brew-cappuccino')!, quantity: 1 },
     ],
-    subtotal: 300,
-    total: 300,
+    subtotal: 250,
+    total: 250,
     pickupType: 'ASAP',
     pickupPin: '7134',
     paymentMethod: 'Nagad',
@@ -153,8 +165,8 @@ const INITIAL_DEMO_ORDERS: Order[] = [
     updatedAt: new Date(Date.now() - 5 * 60000).toISOString(),
   },
   {
-    id: 'UIU-ORD-1003',
-    studentId: 'stu-3',
+    id: 'ORD-1003',
+    studentId: 'stu-demo-03',
     studentName: 'Tanvir Hossain',
     outletId: 'cp',
     outletName: 'CP',
@@ -204,11 +216,11 @@ const INITIAL_DEMO_NOTIFICATIONS: AppNotification[] = [
 const INITIAL_DEMO_MESSAGES: ChatMessage[] = [
   {
     id: 'msg-1',
-    studentId: 'stu-1',
+    studentId: 'stu-demo-01',
     studentName: 'Arafat Rahman',
     outletId: 'khans-kitchen',
     outletName: "Khan's Kitchen",
-    orderId: 'UIU-ORD-1001',
+    orderId: 'ORD-1001',
     senderRole: 'student',
     message: 'Hi, is Chicken Fry freshly prepared right now?',
     timestamp: new Date(Date.now() - 35 * 60000).toISOString(),
@@ -216,26 +228,15 @@ const INITIAL_DEMO_MESSAGES: ChatMessage[] = [
   },
   {
     id: 'msg-2',
-    studentId: 'stu-1',
+    studentId: 'stu-demo-01',
     studentName: 'Arafat Rahman',
     outletId: 'khans-kitchen',
     outletName: "Khan's Kitchen",
-    orderId: 'UIU-ORD-1001',
+    orderId: 'ORD-1001',
     senderRole: 'vendor',
     message: 'Yes Arafat! Just took hot Chicken Fry out of the fryer 3 mins ago.',
     timestamp: new Date(Date.now() - 32 * 60000).toISOString(),
     isRead: true,
-  },
-  {
-    id: 'msg-3',
-    studentId: 'stu-uiu-01',
-    studentName: 'Sayed Rafy (Student)',
-    outletId: 'brew',
-    outletName: 'Brew',
-    senderRole: 'student',
-    message: 'Hello Brew team, do you have cold coffee available today?',
-    timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
-    isRead: false,
   },
 ];
 
@@ -267,7 +268,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     persisted?.notifications || INITIAL_DEMO_NOTIFICATIONS
   );
 
-  // Sync to localStorage
+  // Sync to localStorage as backup/cache
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -290,36 +291,305 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [user, outlets, inventory, tables, cart, orders, tableBookings, reports, messages, notifications]);
 
-  // Active vendor outlet derived from user state
+  // ====================================================================
+  // SUPABASE REAL-TIME DATABASE SYNCHRONIZATION
+  // ====================================================================
+
+  // Helper to fetch orders from database
+  const fetchDbOrders = useCallback(async (currentUserId?: string, userRole?: string, outletId?: string) => {
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      let query = supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .order('created_at', { ascending: false });
+
+      // Apply role filtering if authenticated
+      if (userRole === 'student' && currentUserId) {
+        query = query.eq('student_user_id', currentUserId);
+      } else if (userRole === 'vendor' && outletId) {
+        query = query.eq('vendor_id', outletId);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.warn('Could not fetch DB orders:', error.message);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const mappedOrders: Order[] = data.map((row: any) => ({
+          id: row.order_number || row.id,
+          studentId: row.student_user_id,
+          studentName: row.student_name,
+          outletId: row.vendor_id,
+          outletName: row.outlet_name,
+          items: (row.order_items || []).map((oi: any) => ({
+            item: {
+              id: oi.food_item_id,
+              outletId: row.vendor_id,
+              outletName: row.outlet_name,
+              name: oi.item_name,
+              price: Number(oi.price),
+              category: 'Rice',
+              description: '',
+              image: '',
+              stock: 10,
+              status: 'Available',
+              prepTimeMinutes: 10,
+              rating: 4.8,
+            },
+            quantity: oi.quantity,
+          })),
+          subtotal: Number(row.subtotal),
+          total: Number(row.total_amount),
+          pickupType: row.pickup_type as PickupType,
+          pickupDate: row.pickup_date,
+          pickupTime: row.pickup_time,
+          pickupWindow: row.pickup_window,
+          pickupOffsetMinutes: row.pickup_offset_minutes,
+          isScheduledAhead: row.is_scheduled_ahead,
+          slotSecured: row.slot_secured,
+          pickupPin: row.pickup_pin,
+          specialInstructions: row.special_instructions,
+          paymentMethod: row.payment_method as PaymentMethod,
+          status: row.status as OrderStatus,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }));
+
+        setOrders(mappedOrders);
+      }
+    } catch (err) {
+      console.warn('Error loading orders from Supabase:', err);
+    }
+  }, []);
+
+  // Helper to fetch inventory from database
+  const fetchDbInventory = useCallback(async () => {
+    if (!isSupabaseConfigured()) return;
+
+    try {
+      const { data, error } = await supabase.from('inventory').select('*');
+      if (error) {
+        console.warn('Could not fetch DB inventory:', error.message);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const mappedInv: FoodItem[] = data.map((row: any) => ({
+          id: row.id,
+          outletId: row.outlet_id,
+          outletName: row.outlet_name,
+          name: row.name,
+          category: row.category,
+          price: Number(row.price),
+          description: row.description || '',
+          image: row.image || '',
+          stock: Number(row.stock),
+          status: row.status,
+          prepTimeMinutes: row.prep_time_minutes || 10,
+          rating: Number(row.rating) || 4.5,
+          popular: row.popular,
+        }));
+        setInventory(mappedInv);
+      }
+    } catch (err) {
+      console.warn('Error fetching inventory:', err);
+    }
+  }, []);
+
+  // 1. Check active session on startup and subscribe to auth state changes
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    // Check active session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        const currentUser: User = {
+          id: session.user.id,
+          name: profile?.full_name || session.user.user_metadata?.full_name || 'UIU User',
+          email: session.user.email || '',
+          role: (profile?.role || session.user.user_metadata?.role || 'student') as UserRole,
+          studentId: profile?.student_id || session.user.user_metadata?.student_id,
+          phone: profile?.phone || session.user.user_metadata?.phone,
+          vendorOutletId: profile?.vendor_outlet_id || session.user.user_metadata?.vendor_outlet_id,
+          vendorOutletName: profile?.vendor_outlet_name || session.user.user_metadata?.vendor_outlet_name,
+        };
+
+        setUser(currentUser);
+        fetchDbOrders(currentUser.id, currentUser.role, currentUser.vendorOutletId);
+      }
+    });
+
+    fetchDbInventory();
+
+    // Listen for auth state changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        const currentUser: User = {
+          id: session.user.id,
+          name: profile?.full_name || session.user.user_metadata?.full_name || 'UIU User',
+          email: session.user.email || '',
+          role: (profile?.role || session.user.user_metadata?.role || 'student') as UserRole,
+          studentId: profile?.student_id || session.user.user_metadata?.student_id,
+          phone: profile?.phone || session.user.user_metadata?.phone,
+          vendorOutletId: profile?.vendor_outlet_id || session.user.user_metadata?.vendor_outlet_id,
+          vendorOutletName: profile?.vendor_outlet_name || session.user.user_metadata?.vendor_outlet_name,
+        };
+
+        setUser(currentUser);
+        fetchDbOrders(currentUser.id, currentUser.role, currentUser.vendorOutletId);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    // 2. Realtime listener for Orders & Inventory changes
+    const channel = supabase
+      .channel('public:realtime_feed')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as any;
+            setOrders((prev) =>
+              prev.map((o) =>
+                o.id === updated.order_number || o.id === updated.id
+                  ? { ...o, status: updated.status as OrderStatus, updatedAt: updated.updated_at }
+                  : o
+              )
+            );
+          } else if (payload.eventType === 'INSERT') {
+            fetchDbOrders();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'inventory' },
+        (payload) => {
+          const updated = payload.new as any;
+          setInventory((prev) =>
+            prev.map((i) =>
+              i.id === updated.id
+                ? {
+                    ...i,
+                    stock: Number(updated.stock),
+                    status: updated.status,
+                    price: Number(updated.price),
+                  }
+                : i
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+      supabase.removeChannel(channel);
+    };
+  }, [fetchDbOrders, fetchDbInventory]);
+
+  // Derived active vendor outlet
   const activeVendorOutlet =
     user?.role === 'vendor'
       ? outlets.find((o) => o.id === user.vendorOutletId) || outlets[0]
       : null;
 
-  // Auth & Branch Selection
-  const login = (email: string, role: 'student' | 'vendor', selectedOutletId?: string): boolean => {
-    if (role === 'student') {
-      setUser({
-        id: 'stu-uiu-01',
+  // ====================================================================
+  // AUTHENTICATION & LOGIN
+  // ====================================================================
+  const login = async (
+    email: string,
+    password?: string,
+    requestedRole: 'student' | 'vendor' = 'student',
+    selectedOutletId?: string
+  ): Promise<{ success: boolean; isUnconfirmed?: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+
+    // 1. If Supabase is configured and a password is provided, perform real Supabase Auth
+    if (isSupabaseConfigured() && password) {
+      const res = await loginWithSupabase(cleanEmail, password);
+      if (!res.success) {
+        return {
+          success: false,
+          isUnconfirmed: res.isUnconfirmed,
+          error: res.error,
+        };
+      }
+
+      if (res.user) {
+        // Fetch user profile from database
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', res.user.id)
+          .maybeSingle();
+
+        const role = (profile?.role || res.user.user_metadata?.role || requestedRole) as UserRole;
+        const targetOutlet = outlets.find(
+          (o) => o.id === (profile?.vendor_outlet_id || res.user.user_metadata?.vendor_outlet_id || selectedOutletId)
+        ) || outlets[0];
+
+        const loggedInUser: User = {
+          id: res.user.id,
+          name: profile?.full_name || res.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+          email: res.user.email || cleanEmail,
+          role,
+          studentId: profile?.student_id || res.user.user_metadata?.student_id || '011211048',
+          phone: profile?.phone || res.user.user_metadata?.phone,
+          vendorOutletId: role === 'vendor' ? targetOutlet.id : undefined,
+          vendorOutletName: role === 'vendor' ? targetOutlet.name : undefined,
+        };
+
+        setUser(loggedInUser);
+        fetchDbOrders(loggedInUser.id, loggedInUser.role, loggedInUser.vendorOutletId);
+        return { success: true };
+      }
+    }
+
+    // 2. Demo / Local Fallback (if Supabase is not configured or demo credentials used)
+    if (requestedRole === 'student') {
+      const demoStudent: User = {
+        id: 'stu-demo-01',
         name: 'Sayed Rafy (Student)',
-        email: email || 'student@uiu.ac.bd',
+        email: cleanEmail || 'student@uiu.ac.bd',
         role: 'student',
         studentId: '011211048',
         phone: '+880 1711-223344',
-      });
+      };
+      setUser(demoStudent);
+      return { success: true };
     } else {
       const targetOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
-      setUser({
+      const demoVendor: User = {
         id: `ven-${targetOutlet.id}`,
         name: `${targetOutlet.name} Manager`,
-        email: email || 'vendor@uiu.ac.bd',
+        email: cleanEmail || 'vendor@uiu.ac.bd',
         role: 'vendor',
         phone: '+880 1812-998877',
         vendorOutletId: targetOutlet.id,
         vendorOutletName: targetOutlet.name,
-      });
+      };
+      setUser(demoVendor);
+      return { success: true };
     }
-    return true;
   };
 
   const switchVendorOutlet = (outletId: string) => {
@@ -331,10 +601,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         vendorOutletId: target.id,
         vendorOutletName: target.name,
       });
+      fetchDbOrders(user.id, 'vendor', target.id);
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await signOutSupabase();
     setUser(null);
   };
 
@@ -348,29 +620,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addToCart = (item: FoodItem, quantity: number = 1): { success: boolean; message?: string } => {
     const currentItem = inventory.find((i) => i.id === item.id);
     if (!currentItem || currentItem.stock <= 0) {
-      return { success: false, message: 'Item is currently Sold Out!' };
+      return { success: false, message: `${item.name} is currently Sold Out.` };
     }
 
     const existingIndex = cart.findIndex((c) => c.item.id === item.id);
-    const existingQuantity = existingIndex >= 0 ? cart[existingIndex].quantity : 0;
-    const requestedTotal = existingQuantity + quantity;
+    const existingQty = existingIndex > -1 ? cart[existingIndex].quantity : 0;
+    const requestedQty = existingQty + quantity;
 
-    if (requestedTotal > currentItem.stock) {
+    if (requestedQty > currentItem.stock) {
       return {
         success: false,
-        message: `Only ${currentItem.stock} portions available in stock.`,
+        message: `Only ${currentItem.stock} left in stock for ${item.name}.`,
       };
     }
 
-    if (existingIndex >= 0) {
+    if (existingIndex > -1) {
       const updated = [...cart];
-      updated[existingIndex].quantity = requestedTotal;
+      updated[existingIndex].quantity = requestedQty;
       setCart(updated);
     } else {
       setCart([...cart, { item: currentItem, quantity }]);
     }
 
-    return { success: true };
+    return { success: true, message: `Added ${quantity}x ${item.name} to cart` };
   };
 
   const removeFromCart = (itemId: string) => {
@@ -394,8 +666,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cartSubtotal = cart.reduce((sum, c) => sum + c.item.price * c.quantity, 0);
   const cartTotal = cartSubtotal;
 
-  // Create Order
-  const createOrder = ({
+  // ====================================================================
+  // ORDER CREATION WITH DATABASE PERSISTENCE
+  // ====================================================================
+  const createOrder = async ({
     outletId,
     pickupType,
     pickupDate,
@@ -433,10 +707,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
-    const newOrderId = `UIU-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newOrderId = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
     const newPin = Math.floor(1000 + Math.random() * 9000).toString();
 
-    // 1. Deduct from shared inventory
+    // 1. Deduct from local inventory immediately for snappy UI
     setInventory((prev) =>
       prev.map((item) => {
         const ordered = cart.find((c) => c.item.id === item.id);
@@ -452,10 +726,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // 2. Create the real order record with PIN and instructions
+    // 2. Build order object
     const newOrder: Order = {
       id: newOrderId,
-      studentId: user?.studentId || '011211048',
+      studentId: user?.id || 'stu-demo-01',
       studentName: user?.name || 'UIU Student',
       outletId: targetOutlet.id,
       outletName: targetOutlet.name,
@@ -479,7 +753,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setOrders((prev) => [newOrder, ...prev]);
 
-    // 3. Notifications
+    // 3. Persist to Supabase if configured
+    if (isSupabaseConfigured() && user?.id) {
+      try {
+        const { data: dbOrder, error: orderErr } = await supabase
+          .from('orders')
+          .insert({
+            order_number: newOrderId,
+            student_user_id: user.id,
+            student_name: user.name,
+            vendor_id: targetOutlet.id,
+            outlet_name: targetOutlet.name,
+            subtotal: cartSubtotal,
+            total_amount: cartTotal,
+            pickup_type: pickupType,
+            pickup_date: pickupType === 'Schedule Pickup' ? pickupDate : 'Today',
+            pickup_time: newOrder.pickupTime,
+            pickup_window: newOrder.pickupWindow,
+            pickup_offset_minutes: newOrder.pickupOffsetMinutes,
+            is_scheduled_ahead: newOrder.isScheduledAhead,
+            slot_secured: newOrder.slotSecured,
+            pickup_pin: newPin,
+            special_instructions: specialInstructions || null,
+            payment_method: paymentMethod,
+            status: 'Placed',
+          })
+          .select()
+          .single();
+
+        if (orderErr) {
+          console.error('Error inserting order in Supabase:', orderErr);
+        } else if (dbOrder) {
+          // Insert order items
+          const itemRows = cart.map((c) => ({
+            order_id: dbOrder.id,
+            food_item_id: c.item.id,
+            item_name: c.item.name,
+            quantity: c.quantity,
+            price: c.item.price,
+            subtotal: c.item.price * c.quantity,
+          }));
+
+          await supabase.from('order_items').insert(itemRows);
+
+          // Update stock in Supabase
+          for (const c of cart) {
+            const newStock = Math.max(0, c.item.stock - c.quantity);
+            await supabase
+              .from('inventory')
+              .update({
+                stock: newStock,
+                status: calculateStockStatus(newStock),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', c.item.id);
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Supabase DB error while creating order:', dbErr);
+      }
+    }
+
+    // 4. Notifications
     const studentNotif: AppNotification = {
       id: `notif-${Date.now()}-1`,
       recipientRole: 'student',
@@ -494,7 +829,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `notif-${Date.now()}-2`,
       recipientRole: 'vendor',
       title: `New Order #${newOrderId}`,
-      message: `Order #${newOrderId} received from ${newOrder.studentName} (${newOrder.items.length} items).`,
+      message: `${user?.name || 'Student'} placed order with PIN #${newPin} for ${targetOutlet.name}.`,
       type: 'order',
       timestamp: new Date().toISOString(),
       isRead: false,
@@ -503,27 +838,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications((prev) => [studentNotif, vendorNotif, ...prev]);
     clearCart();
 
-    return { success: true, orderId: newOrderId, pickupPin: newPin };
+    return {
+      success: true,
+      orderId: newOrderId,
+      pickupPin: newPin,
+    };
   };
 
-  // Vendor updates order status
-  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
+  // ====================================================================
+  // ORDER STATUS UPDATE (REALTIME PERSISTENCE)
+  // ====================================================================
+  const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
+    // Local optimistic update
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status, updatedAt: new Date().toISOString() } : o))
     );
 
+    // Database update if configured
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('orders')
+          .update({
+            status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('order_number', orderId);
+      } catch (err) {
+        console.warn('Error updating order status in Supabase:', err);
+      }
+    }
+
+    // Status notification
     const targetOrder = orders.find((o) => o.id === orderId);
     if (targetOrder) {
       const notif: AppNotification = {
         id: `notif-${Date.now()}`,
         recipientRole: 'student',
         title: `Order Status: ${status}`,
-        message:
-          status === 'Ready'
-            ? `Your order #${orderId} is READY for pickup at ${targetOrder.outletName}! Show PIN: ${targetOrder.pickupPin}.`
-            : status === 'Preparing'
-            ? `The chef at ${targetOrder.outletName} has started preparing your order #${orderId}.`
-            : `Order #${orderId} marked as ${status}.`,
+        message: `Your order #${orderId} from ${targetOrder.outletName} is now ${status}.`,
         type: 'order',
         timestamp: new Date().toISOString(),
         isRead: false,
@@ -532,134 +885,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Verify PIN to hand over order
   const verifyPickupPin = (orderId: string, enteredPin: string) => {
-    const order = orders.find((o) => o.id === orderId);
-    if (!order) {
-      return { success: false, error: 'Order not found' };
-    }
-    if (order.pickupPin.trim() === enteredPin.trim()) {
+    const target = orders.find((o) => o.id === orderId);
+    if (!target) return { success: false, error: 'Order not found' };
+
+    if (target.pickupPin === enteredPin.trim()) {
       updateOrderStatus(orderId, 'Completed');
       return { success: true };
     }
-    return { success: false, error: `Invalid PIN. Please check student order screen.` };
+    return { success: false, error: 'Incorrect 4-digit Pickup PIN code. Please check student order.' };
   };
 
-  // Direct Student-to-Outlet Messaging
-  const sendChatMessage = ({
-    outletId,
-    message,
-    senderRole,
-    orderId,
-  }: {
-    outletId: string;
-    message: string;
-    senderRole: 'student' | 'vendor';
-    orderId?: string;
-  }) => {
-    const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
-    const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      studentId: user?.studentId || 'stu-uiu-01',
-      studentName: user?.name || 'UIU Student',
-      outletId: targetOutlet.id,
-      outletName: targetOutlet.name,
-      orderId,
-      senderRole,
-      message,
-      timestamp: new Date().toISOString(),
-      isRead: false,
-    };
-
-    setMessages((prev) => [...prev, newMsg]);
-
-    // Send notification to opposite role
-    const notif: AppNotification = {
-      id: `notif-chat-${Date.now()}`,
-      recipientRole: senderRole === 'student' ? 'vendor' : 'student',
-      title:
-        senderRole === 'student'
-          ? `Message from ${newMsg.studentName}`
-          : `Reply from ${targetOutlet.name}`,
-      message: message.slice(0, 50),
-      type: 'report',
-      timestamp: new Date().toISOString(),
-      isRead: false,
-    };
-    setNotifications((prev) => [notif, ...prev]);
-  };
-
-  const markMessagesAsRead = (outletId: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.outletId === outletId ? { ...m, isRead: true } : m))
-    );
-  };
-
-  // Vendor Stock Intake
-  const addStockIntake = (itemId: string, quantity: number) => {
-    if (quantity <= 0) return;
+  // Inventory & Restock
+  const addStockIntake = async (itemId: string, quantity: number) => {
+    let updatedItem: FoodItem | undefined;
 
     setInventory((prev) =>
       prev.map((item) => {
         if (item.id === itemId) {
           const newStock = item.stock + quantity;
-          return {
-            ...item,
-            stock: newStock,
-            status: calculateStockStatus(newStock),
-          };
+          const status = calculateStockStatus(newStock);
+          updatedItem = { ...item, stock: newStock, status };
+          return updatedItem;
         }
         return item;
       })
     );
 
-    const item = inventory.find((i) => i.id === itemId);
-    if (item) {
-      const notif: AppNotification = {
-        id: `notif-${Date.now()}`,
-        recipientRole: 'student',
-        title: `Restock Alert: ${item.name}`,
-        message: `Freshly prepared batch of ${item.name} (+${quantity} portions) is now available at ${item.outletName}!`,
-        type: 'inventory',
-        timestamp: new Date().toISOString(),
-        isRead: false,
-      };
-      setNotifications((prev) => [notif, ...prev]);
+    if (isSupabaseConfigured() && updatedItem) {
+      try {
+        await supabase
+          .from('inventory')
+          .update({
+            stock: updatedItem.stock,
+            status: updatedItem.status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', itemId);
+      } catch (err) {
+        console.warn('Error updating inventory in Supabase:', err);
+      }
     }
   };
 
-  // Apply AI Recommendation Restock
-  const applyAiRestockRecommendation = (itemName: string, outletName: string, refillAmount: number) => {
+  const applyAiRestockRecommendation = async (itemName: string, outletName: string, refillAmount: number) => {
+    let updatedItem: FoodItem | undefined;
+
     setInventory((prev) =>
       prev.map((item) => {
-        const matchesName = item.name.toLowerCase().trim() === itemName.toLowerCase().trim();
-        const matchesOutlet = !outletName || item.outletName.toLowerCase().includes(outletName.toLowerCase());
+        const matchesName = item.name.toLowerCase().includes(itemName.toLowerCase());
+        const matchesOutlet = item.outletName.toLowerCase().includes(outletName.toLowerCase());
         if (matchesName && matchesOutlet) {
           const newStock = item.stock + refillAmount;
-          return {
-            ...item,
-            stock: newStock,
-            status: calculateStockStatus(newStock),
-          };
+          const status = calculateStockStatus(newStock);
+          updatedItem = { ...item, stock: newStock, status };
+          return updatedItem;
         }
         return item;
       })
     );
 
+    if (isSupabaseConfigured() && updatedItem) {
+      try {
+        await supabase
+          .from('inventory')
+          .update({
+            stock: updatedItem.stock,
+            status: updatedItem.status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', updatedItem.id);
+      } catch (err) {
+        console.warn('Error updating inventory in Supabase:', err);
+      }
+    }
+
     const notif: AppNotification = {
-      id: `notif-ai-restock-${Date.now()}`,
+      id: `notif-${Date.now()}`,
       recipientRole: 'vendor',
-      title: 'AI Restock Executed',
-      message: `Successfully restocked ${refillAmount} portions of ${itemName} based on Gemini demand analysis.`,
-      type: 'ai',
+      title: 'AI Restock Applied',
+      message: `Refilled +${refillAmount} units of ${itemName} for ${outletName}.`,
+      type: 'inventory',
       timestamp: new Date().toISOString(),
       isRead: false,
     };
     setNotifications((prev) => [notif, ...prev]);
   };
 
-  // Table Booking
-  const bookTable = ({
+  // Table bookings
+  const bookTable = async ({
     outletId,
     tableNumber,
     date,
@@ -675,8 +989,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     durationMinutes: number;
     guests: number;
     phone: string;
-  }) => {
-    const conflict = tableBookings.find(
+  }): Promise<{ success: boolean; error?: string }> => {
+    const conflict = tableBookings.some(
       (b) =>
         b.outletId === outletId &&
         b.tableNumber === tableNumber &&
@@ -688,18 +1002,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (conflict) {
       return {
         success: false,
-        error: `${tableNumber} is already reserved for ${time} on ${date}. Please select another table or time.`,
+        error: `${tableNumber} is already booked at ${time} on ${date}. Please select another time or table.`,
       };
     }
 
-    const outlet = outlets.find((o) => o.id === outletId) || outlets[0];
+    const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
+    const bookingNum = `TB-${Math.floor(100 + Math.random() * 900)}`;
+
     const newBooking: TableBooking = {
-      id: `TB-${Math.floor(100 + Math.random() * 900)}`,
-      studentId: user?.studentId || '011211048',
+      id: bookingNum,
+      studentId: user?.id || 'stu-demo-01',
       studentName: user?.name || 'UIU Student',
-      studentPhone: phone || '+880 1711-223344',
-      outletId: outlet.id,
-      outletName: outlet.name,
+      studentPhone: phone,
+      outletId: targetOutlet.id,
+      outletName: targetOutlet.name,
       tableNumber,
       date,
       time,
@@ -711,26 +1027,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTableBookings((prev) => [newBooking, ...prev]);
 
-    setTables((prev) =>
-      prev.map((t) => (t.outletId === outletId && t.tableNumber === tableNumber ? { ...t, status: 'Reserved' } : t))
-    );
+    if (isSupabaseConfigured() && user?.id) {
+      try {
+        await supabase.from('table_bookings').insert({
+          booking_number: bookingNum,
+          student_user_id: user.id,
+          student_name: user.name,
+          student_phone: phone,
+          outlet_id: targetOutlet.id,
+          outlet_name: targetOutlet.name,
+          table_number: tableNumber,
+          booking_date: date,
+          start_time: time,
+          duration_minutes: durationMinutes,
+          guests,
+          status: 'Confirmed',
+        });
+      } catch (err) {
+        console.warn('Error saving table booking in Supabase:', err);
+      }
+    }
 
-    const studentNotif: AppNotification = {
-      id: `notif-tb-${Date.now()}`,
-      recipientRole: 'student',
-      title: 'Table Booking Confirmed',
-      message: `${tableNumber} booked at ${outlet.name} for ${date} at ${time} (${durationMinutes} mins).`,
-      type: 'table',
-      timestamp: new Date().toISOString(),
-      isRead: false,
-    };
-    setNotifications((prev) => [studentNotif, ...prev]);
+    // Update table status in local UI
+    setTables((prev) =>
+      prev.map((t) =>
+        t.outletId === outletId && t.tableNumber === tableNumber ? { ...t, status: 'Reserved' } : t
+      )
+    );
 
     return { success: true };
   };
 
-  // Submit Issue Report
-  const submitReport = ({
+  // Customer Reports
+  const submitReport = async ({
     outletId,
     category,
     description,
@@ -739,13 +1068,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     category: ReportCategory;
     description: string;
   }) => {
-    const outlet = outlets.find((o) => o.id === outletId) || outlets[0];
+    const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
     const newReport: CustomerReport = {
-      id: `REP-${Math.floor(100 + Math.random() * 900)}`,
-      studentId: user?.studentId || '011211048',
+      id: `rep-${Date.now()}`,
+      studentId: user?.id || 'stu-demo-01',
       studentName: user?.name || 'UIU Student',
-      outletId: outlet.id,
-      outletName: outlet.name,
+      outletId: targetOutlet.id,
+      outletName: targetOutlet.name,
       category,
       description,
       status: 'Open',
@@ -754,16 +1083,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setReports((prev) => [newReport, ...prev]);
 
-    const notif: AppNotification = {
-      id: `notif-rep-${Date.now()}`,
-      recipientRole: 'vendor',
-      title: `New Issue Reported: ${category}`,
-      message: `A student reported an issue regarding ${outlet.name}: "${description.slice(0, 50)}..."`,
-      type: 'report',
-      timestamp: new Date().toISOString(),
-      isRead: false,
-    };
-    setNotifications((prev) => [notif, ...prev]);
+    if (isSupabaseConfigured() && user?.id) {
+      try {
+        await supabase.from('customer_reports').insert({
+          student_user_id: user.id,
+          student_name: user.name,
+          outlet_id: targetOutlet.id,
+          outlet_name: targetOutlet.name,
+          category,
+          description,
+          status: 'Open',
+        });
+      } catch (err) {
+        console.warn('Error saving report in Supabase:', err);
+      }
+    }
 
     return { success: true };
   };
@@ -772,26 +1106,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReports((prev) => prev.map((r) => (r.id === reportId ? { ...r, status } : r)));
   };
 
+  // Direct Student-to-Outlet Messaging
+  const sendChatMessage = async ({
+    outletId,
+    message,
+    senderRole,
+    orderId,
+  }: {
+    outletId: string;
+    message: string;
+    senderRole: 'student' | 'vendor';
+    orderId?: string;
+  }) => {
+    const targetOutlet = outlets.find((o) => o.id === outletId) || outlets[0];
+    const newMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      studentId: user?.id || 'stu-demo-01',
+      studentName: user?.name || 'UIU Student',
+      outletId: targetOutlet.id,
+      outletName: targetOutlet.name,
+      orderId,
+      senderRole,
+      message,
+      timestamp: new Date().toISOString(),
+      isRead: false,
+    };
+
+    setMessages((prev) => [...prev, newMsg]);
+
+    if (isSupabaseConfigured() && user?.id) {
+      try {
+        await supabase.from('chat_messages').insert({
+          student_id: user.id,
+          student_name: user.name,
+          outlet_id: targetOutlet.id,
+          outlet_name: targetOutlet.name,
+          order_id: orderId || null,
+          sender_role: senderRole,
+          message,
+          is_read: false,
+        });
+      } catch (err) {
+        console.warn('Error saving chat message in Supabase:', err);
+      }
+    }
+  };
+
+  const markMessagesAsRead = (outletId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.outletId === outletId ? { ...m, isRead: true } : m))
+    );
+  };
+
+  // Notifications
   const markNotificationAsRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
   };
 
-  const clearNotifications = () => {
-    setNotifications([]);
-  };
+  const clearNotifications = () => setNotifications([]);
 
-  // Reset Demo Data
+  // Reset Demo Presentation
   const resetDemoData = () => {
     localStorage.removeItem(STORAGE_KEY);
-    setOutlets(INITIAL_OUTLETS);
     setInventory(INITIAL_FOOD_ITEMS);
-    setTables(INITIAL_TABLES);
-    setCart([]);
     setOrders(INITIAL_DEMO_ORDERS);
     setTableBookings([]);
     setReports([]);
     setMessages(INITIAL_DEMO_MESSAGES);
     setNotifications(INITIAL_DEMO_NOTIFICATIONS);
+    setCart([]);
   };
 
   return (
@@ -810,8 +1193,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         orders,
         tableBookings,
         reports,
-        messages,
         notifications,
+        messages,
         addToCart,
         removeFromCart,
         updateCartQuantity,
@@ -821,13 +1204,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createOrder,
         updateOrderStatus,
         verifyPickupPin,
-        sendChatMessage,
-        markMessagesAsRead,
         addStockIntake,
         applyAiRestockRecommendation,
         bookTable,
         submitReport,
         updateReportStatus,
+        sendChatMessage,
+        markMessagesAsRead,
         markNotificationAsRead,
         clearNotifications,
         resetDemoData,
@@ -838,7 +1221,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
-export const useApp = () => {
+export const useApp = (): AppContextType => {
   const context = useContext(AppContext);
   if (!context) {
     throw new Error('useApp must be used within an AppProvider');

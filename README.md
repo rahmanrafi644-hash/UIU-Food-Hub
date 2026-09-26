@@ -2,202 +2,200 @@
 
 > **An intelligent, API-integrated campus food management and ordering platform for United International University (UIU).**
 
-Built with **React, TypeScript, Vite, and Google Gemini API**, and engineered for seamless deployment on **Vercel**.
+Built with **React, TypeScript, Vite, Supabase (Auth, PostgreSQL Database, Realtime, RLS), and Google Gemini API**, engineered for seamless deployment on **Vercel**.
 
 ---
 
 ## 📌 Executive Overview
 
-UIU Food HUB is a dual-interface university food ecosystem connecting:
-1. **Students**: Discover campus outlets, browse live menus with real-time stock availability, order meals ahead, customize pickup preferences (ASAP vs Scheduled), reserve cafeteria tables, track order preparation steps, and submit quality reports.
-2. **Campus Vendors**: Monitor incoming orders, transition preparation stages (`Placed` ➔ `Preparing` ➔ `Ready` ➔ `Completed`), conduct prepared stock intake, monitor seating occupancy, and utilize an **Agentic AI Demand Assistant powered by Google Gemini** for data-driven restocking intelligence.
+UIU Food HUB is a full-stack, multi-user university food ecosystem connecting:
+1. **Students**: Register with verified `@uiu.ac.bd` credentials, discover campus outlets, browse live menus with real-time stock availability, order meals ahead, customize pickup preferences (ASAP vs Class Break Slots), reserve cafeteria tables, track real-time order preparation steps, and direct-message outlet kitchens.
+2. **Campus Vendors**: Individual authenticated outlet accounts, monitor incoming branch orders, transition preparation stages (`Placed` ➔ `Preparing` ➔ `Ready` ➔ `Completed`), verify 4-digit pickup PINs, conduct prepared stock intake, monitor seating occupancy, and utilize an **Agentic AI Demand Assistant powered by Google Gemini** for data-driven restocking intelligence.
 
 ---
 
-## 🚀 Why this project is API-integrated
+## 🗄️ Backend Architecture & Supabase Integration
 
-> *"The vendor-side AI Demand Assistant communicates with the Gemini API to analyze application-generated order and inventory data and produce structured demand and restocking recommendations."*
-
-Unlike simple mockups that present hard-coded text, UIU Food HUB connects live operational data to the **Google Gemini API** via a secure serverless architecture:
+The platform is backed by **Supabase** for secure authentication, relational database storage, Row Level Security (RLS), and Realtime synchronization:
 
 ```text
-                    UIU FOOD HUB (React + TypeScript)
-                                 │
-                     ┌───────────┴───────────┐
-                     │                       │
-                 STUDENT                  VENDOR
-                     │                       │
-               Browse / Order          Orders / Stock
-               Checkout                Tables / Reports
-               Tables                  AI Assistant
-                     │                       │
-                     └───────────┬───────────┘
-                                 │
-                          SHARED APP STATE
-                    (Synchronized Inventory & Orders)
-                                 │
-                                 ▼
-                     VERCEL SERVERLESS FUNCTION
-                       (/api/analyze-demand)
-                                 │
-                                 ▼
-                         GOOGLE GEMINI API
-                      (gemini-2.0-flash model)
-                                 │
-                                 ▼
-                      STRUCTURED DEMAND ANALYSIS
-                      (JSON Schema with Risk Levels)
-                                 │
-                                 ▼
-                       RESTOCK RECOMMENDATION
-                     (Calculated refill portions)
-                                 │
-                                 ▼
-                          VENDOR APPROVAL
-                      (Human-in-the-Loop commit)
-                                 │
-                                 ▼
-                       INVENTORY REPLENISHMENT
-                 (Stock updates from 8 to 28 units)
+                     UIU FOOD HUB (React + TypeScript)
+                                  │
+         ┌────────────────────────┴────────────────────────┐
+         │                                                 │
+   STUDENT AUTH                                      VENDOR AUTH
+  (@uiu.ac.bd only)                             (Any valid email + branch)
+         │                                                 │
+         └────────────────────────┬────────────────────────┘
+                                  ▼
+                        SUPABASE AUTHENTICATION
+                   (Email Verification, Sessions, JWT)
+                                  │
+                                  ▼
+                         SUPABASE POSTGRESQL
+                   (Row Level Security Policies Enforced)
+       ┌──────────────────┬─────────────────┬─────────────────┐
+       │                  │                 │                 │
+    PROFILES           ORDERS          INVENTORY        BOOKINGS
+ (id, role, UIU)    (ORD-XXXX)        (Real Stock)     (TB-XXX)
+       │                  │                 │                 │
+       └──────────────────┼─────────────────┴─────────────────┘
+                          │
+                          ▼
+             SUPABASE REALTIME SUBSCRIPTIONS
+       (Order Status updates stream live to student UI)
+                          │
+                          ▼
+              VERCEL SERVERLESS FUNCTION
+                (/api/analyze-demand)
+                          │
+                          ▼
+                  GOOGLE GEMINI API
+               (gemini-2.0-flash model)
 ```
-
-### Agentic Intelligence Tools
-The AI Demand Assistant encapsulates structured tools:
-- `getInventory()`: Retrieves current stock levels and threshold statuses across all outlets.
-- `getRecentOrders()`: Analyzes student ordering velocity during peak lecture breaks.
-- `getSalesData()`: Calculates fast-moving items and pairing trends.
-- `createRestockRecommendation()`: Calculates optimal refill portions with explicit rationale before presenting to the vendor.
-
-The system enforces **Human-in-the-Loop control**: the AI cannot secretly tamper with stock; vendors must click **[Add Recommended Stock]** to verify and execute the replenishment.
 
 ---
 
-## 🔑 Demo Credentials
+## 🛡️ Database Structure & Tables
 
-| Role | Email | Password | Quick Action |
+Run the SQL migration script located in [`supabase/schema.sql`](supabase/schema.sql) in your **Supabase Dashboard > SQL Editor**.
+
+1. **`profiles`**: Linked to `auth.users(id)` with `role` (`student` or `vendor`), `full_name`, `email`, `phone`, `student_id`, `vendor_outlet_id`.
+   * Enforces database-level constraint: Students MUST have an email ending with `@uiu.ac.bd`.
+2. **`vendors`**: Relates authenticated vendor users to their assigned campus outlets.
+3. **`inventory`**: Persistent database-backed stock levels across all campus outlets.
+4. **`orders`**: Real persistent orders with unique order numbers (e.g. `ORD-1045`), pickup PINs, time preference windows, and status tracking.
+5. **`order_items`**: Line items linked to parent orders with quantities and prices.
+6. **`table_bookings`**: Cafeteria table reservations with conflict prevention.
+7. **`customer_reports`**: Student issue reports submitted to outlet managers.
+8. **`chat_messages`**: Direct two-way messaging between students and kitchen counters.
+
+---
+
+## 🔒 Row Level Security (RLS) & Route Protection
+
+The database enforces security at the PostgreSQL level:
+* **Students**: Can view and create only their own profile, orders, order items, and bookings. Cannot see other students' orders.
+* **Vendors**: Can view and update only orders, inventory, and bookings belonging to their assigned outlet. Cannot view or modify unrelated outlets.
+* **Frontend Route Protection**:
+  * `/student/*` & main pages: Protected by `<RequireStudent>`, unauthenticated users redirect to `/login`, vendors redirect to `/vendor`.
+  * `/vendor/*`: Protected by `<RequireVendor>`, unauthenticated users redirect to `/login`, students redirect to `/`.
+
+---
+
+## 🎓 Registration & Email Verification Rules
+
+### 1. Student Registration
+* **Fields**: Full Name, UIU Email, Phone Number, Student ID, Password, Confirm Password.
+* **Email Restriction**: Must end with `@uiu.ac.bd` (e.g. `teststudent@uiu.ac.bd`).
+* If a student enters `test@gmail.com` or any non-UIU domain:
+  > *"Students must register using a valid UIU email address ending with @uiu.ac.bd."*
+* Account requires Supabase email verification before first login.
+
+### 2. Vendor Registration
+* **Fields**: Vendor/Owner Name, Outlet Selection (`Khan's Kitchen`, `Olympia`, `CP`, `Brew`, `Toa's Kitchen`), Email, Phone Number, Password, Confirm Password.
+* **Email Rule**: Vendors can use general email addresses (e.g. `khanskitchen@gmail.com`).
+* Email verification screen with resend link functionality.
+
+---
+
+## 🔑 Demo & Presentation Accounts
+
+For offline demonstration and faculty review, demo credentials are built-in:
+
+| Role | Email | Password | Scope |
 | :--- | :--- | :--- | :--- |
-| **Student** | `student@uiu.ac.bd` | `demo123` | Click "Student" on login screen |
-| **Vendor** | `vendor@uiu.ac.bd` | `demo123` | Click "Vendor" on login screen |
+| **Student** | `student@uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
+| **Vendor** | `vendor@uiu.ac.bd` | `demo123` | Khan's Kitchen (or selectable branch) |
 
 ---
 
-## 🏛️ Campus Outlets & Official Menus
+## 🏛️ Campus Outlets & Menus
 
-1. **Khan's Kitchen**: Fried Rice, Chicken Fry *(demo initial stock: 10)*, Vegetables, Dim Khichuri, Chicken Khichuri, Sandwich, Shawarma.
-2. **Olympia**: Fried Rice, Chicken Fry, Vegetables, Dim Khichuri, Chicken Khichuri, Sandwich, Shawarma.
-3. **CP**: Chicken Fry, Spicy Chicken Fry, Sausage, Meatballs.
-4. **Brew**: Americano, Cappuccino, Latte, Mocha, Cold Coffee, Iced Latte.
-5. **Toa's Kitchen**: Mango Juice, Orange Juice, Watermelon Juice, Pineapple Juice, Lemon Juice.
+1. **Khan's Kitchen**: Fried Rice, Crispy Chicken Fry *(10 initial stock)*, Chinese Vegetables, Dim Khichuri, Chicken Khichuri, Club Sandwich, Shawarma Wrap.
+2. **Olympia**: Special Fried Rice, Southern Fried Chicken, Stir Fry Vegetables, Egg Khichuri, Olympia Chicken Khichuri, Grilled Chicken Sub, Lebanese Shawarma.
+3. **CP**: Five Star Crispy Chicken, Spicy Crispy Chicken, Smoked Chicken Frank Sausage, Spicy Meatballs.
+4. **Brew**: Hot Americano, Frothy Cappuccino, Classic Latte, Chocolate Mocha, Special Cold Coffee, Iced Caramel Latte.
+5. **Toa's Kitchen**: Mango Juice, Squeezed Orange Juice, Hydrating Watermelon Juice, Pineapple Juice, Iced Fresh Lemonade.
 
-### Live Stock Status Logic
-- `0 units`: **Sold Out** (Red badge • Add to cart disabled)
-- `1–8 units`: **Low Stock** (Amber badge • Alert triggered)
-- `9+ units`: **Available** (Green badge • Optimal availability)
-
----
-
-## 🎬 Faculty Presentation Walkthrough
-
-Follow these exact steps during demonstration:
-
-1. **Sign In as Student**:
-   - Go to login, select **Student**, and sign in (`student@uiu.ac.bd`).
-   - Notice **Khan's Kitchen Chicken Fry** has **10 units** (Available).
-2. **Student Places Order**:
-   - Open Khan's Kitchen ➔ Select Chicken Fry ➔ Choose quantity `2` ➔ Add to Cart.
-   - Open Cart ➔ Proceed to Checkout ➔ Select Pickup (ASAP) and Payment (`bKash` demo) ➔ Click **Confirm & Place Order**.
-   - **Shared state immediately deducts stock**: Chicken Fry stock drops from **10 to 8 units** (Status switches to **Low Stock**).
-3. **Switch to Vendor**:
-   - Sign in as Vendor (`vendor@uiu.ac.bd`).
-   - Open **Orders**: Notice the student's order `#UIU-...`.
-   - Update order from `Placed` ➔ `Preparing` ➔ `Ready`.
-   - Switch back to student view or notice live synchronization.
-4. **AI Demand Intelligence Demonstration**:
-   - In Vendor portal, navigate to **AI Demand Assistant**.
-   - Click **[Analyze Demand with AI]**.
-   - Gemini analyzes live inventory, recent order velocity, and peak campus class times.
-   - Output displays:
-     - **Item**: Chicken Fry (Khan's Kitchen)
-     - **Risk**: `HIGH SHORTAGE RISK` (Current Stock: 8)
-     - **Expected Demand**: 26 portions
-     - **Recommended Refill**: `+20 portions`
-5. **Restock Execution**:
-   - Vendor clicks **[Add Recommended Stock]**.
-   - Shared inventory increases: `8 + 20 = 28 units`.
-   - Status updates to **Available (28)**.
-   - Student interface immediately reflects 28 available units.
-6. **Table Reservation**:
-   - Student navigates to **Tables** ➔ Selects Khan's Kitchen ➔ Table 02 ➔ Confirms booking.
-   - Vendor **Tables** view instantly reflects Table 02 as `Reserved`.
-7. **Repeat Demo**:
-   - Click the **Reset Demo** button in the header or profile at any time to restore initial presentation state.
+### Live Stock Status
+* `0 units`: **Sold Out** (Red badge • Disabled)
+* `1–8 units`: **Low Stock** (Amber badge • Alert triggered)
+* `9+ units`: **Available** (Green badge • Optimal)
 
 ---
 
-## 🛠️ Technology Stack
+## ⚙️ Environment Variables Setup
 
-- **Frontend**: React 18, Vite, TypeScript
-- **Styling**: Modern CSS Design System (mobile-first 390×844 frame + responsive desktop preview)
-- **Icons**: Lucide React
-- **Routing**: React Router DOM (v6)
-- **State Management**: Centralized React Context with synchronized shared state and `localStorage` persistence
-- **AI Integration**: Google Gemini 2.0 Flash (`/api/analyze-demand`)
-- **Deployment Platform**: Vercel Serverless Architecture
+Create a `.env.local` file in the project root:
 
----
-
-## 💻 Local Development Setup
-
-### 1. Prerequisites
-- Node.js (v18 or v20+)
-- npm
-
-### 2. Installation
-```bash
-git clone <repo-url>
-cd "UIU Food Hub"
-npm install
-```
-
-### 3. Environment Variable Configuration
-Copy `.env.example` to `.env.local`:
-```bash
-cp .env.example .env.local
-```
-Add your Google Gemini API key:
 ```env
-GEMINI_API_KEY=AIzaSy...your_gemini_api_key_here
+# 1. Supabase Backend (Auth, Database, Realtime)
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+
+# 2. Google Gemini API (AI Demand Assistant)
+GEMINI_API_KEY=your-gemini-api-key
 ```
-*(Get a free key at [Google AI Studio](https://aistudio.google.com/app/apikey))*
 
-> *Note: If no API key is specified, the application seamlessly activates an intelligent local heuristic simulation so offline faculty grading never fails.*
+---
 
-### 4. Run Development Server
-```bash
-npm run dev
+## 🚀 Local Development
+
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Start Vite Dev Server**:
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:5173/](http://localhost:5173/)
+
+3. **Production Build**:
+   ```bash
+   npm run build
+   ```
+
+---
+
+## ☁️ Vercel Deployment
+
+1. Push your repository to GitHub.
+2. Import the repository in [Vercel](https://vercel.com).
+3. Under **Project Settings > Environment Variables**, add:
+   * `VITE_SUPABASE_URL`: Your Supabase Project URL
+   * `VITE_SUPABASE_ANON_KEY`: Your Supabase Anon Public Key
+   * `GEMINI_API_KEY`: Your Google AI Studio API Key
+4. Deploy! The serverless function `/api/analyze-demand` will automatically configure for Gemini 2.0 Flash.
+
+---
+
+## 📋 Faculty Evaluation Demonstration Scenario
+
+```text
+TEST A: STUDENT FLOW
+1. Go to http://localhost:5173/login
+2. Click [Register] tab > Student
+3. Enter Name: Test Student, Email: teststudent@uiu.ac.bd, Phone: 01700000000, Pass: Demo@12345
+4. Notice UI validates @uiu.ac.bd domain strictly.
+5. Verify email / Sign in.
+6. Browse Khan's Kitchen > Add 2x Chicken Fry (Stock drops from 10 to 8 units).
+7. Checkout > Select pickup preference (+30m or ASAP) > Confirm.
+8. Unique Order #ORD-XXXX generated with 4-digit pickup PIN.
+9. Check [My Orders] > Only test student's orders appear.
+
+TEST B: VENDOR FLOW
+1. Sign in as Vendor (Khan's Kitchen).
+2. Open Vendor Dashboard > Order #ORD-XXXX appears.
+3. Advance status: Placed -> Preparing -> Ready.
+4. Student's tracking view updates immediately via Realtime.
+5. Stock alerts show Chicken Fry (8 units, Low Stock).
+
+TEST C: AI DEMAND ASSISTANT
+1. In Vendor portal, go to [AI Demand] tab.
+2. Click [Analyze Demand with AI].
+3. Gemini 2.0 Flash detects High Shortage Risk and recommends +20 portions refill.
+4. Click [Add Recommended Stock (+20)] > Stock updates to 28 units (Available).
 ```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
-
----
-
-## ☁️ Vercel Deployment Instructions
-
-1. Push your repository to GitHub / GitLab.
-2. Import project in [Vercel Dashboard](https://vercel.com).
-3. Set the Framework Preset to **Vite**.
-4. In **Settings ➔ Environment Variables**, add:
-   - `GEMINI_API_KEY` = your Gemini API key.
-5. Deploy! Vercel automatically deploys both the frontend and the serverless function `api/analyze-demand.ts`.
-
----
-
-## 🔮 Future Improvements
-
-- Campus RFID / UIU student ID card tap payments.
-- Real-time WebSockets / Supabase broadcast channel for multi-device sync without shared browser cache.
-- Kitchen display system (KDS) printer integration for physical token printing.
-- Nutritional calorie tracking and allergen filtering for health-conscious students.
-
----
-
-*Academic Prototype developed for UIU Faculty Evaluation.*

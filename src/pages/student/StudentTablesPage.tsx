@@ -4,9 +4,14 @@ import { TableBookingModal } from '../../components/student/TableBookingModal';
 import { CalendarDays, Clock, Users, Plus, CheckCircle, Store, AlertCircle } from 'lucide-react';
 
 export const StudentTablesPage: React.FC = () => {
-  const { tableBookings, tables, outlets } = useApp();
+  const { tableBookings, tables, outlets, user } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOutletFilter, setSelectedOutletFilter] = useState('all');
+
+  // Filter bookings strictly to current student
+  const studentBookings = tableBookings.filter(
+    (b) => b.studentId === user?.id || (user?.id === 'stu-demo-01' && b.studentId.startsWith('stu-demo'))
+  );
 
   const filteredTables = tables.filter(
     (t) => selectedOutletFilter === 'all' || t.outletId === selectedOutletFilter
@@ -35,7 +40,7 @@ export const StudentTablesPage: React.FC = () => {
       <div>
         <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 10 }}>Your Reservations</h3>
 
-        {tableBookings.length === 0 ? (
+        {studentBookings.length === 0 ? (
           <div
             className="card-base"
             style={{
@@ -59,7 +64,7 @@ export const StudentTablesPage: React.FC = () => {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {tableBookings.map((b) => (
+            {studentBookings.map((b) => (
               <div
                 key={b.id}
                 className="card-base"

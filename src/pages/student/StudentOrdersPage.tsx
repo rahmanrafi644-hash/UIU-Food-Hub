@@ -14,9 +14,15 @@ import {
 } from 'lucide-react';
 
 export const StudentOrdersPage: React.FC = () => {
-  const { orders } = useApp();
+  const { orders, user } = useApp();
   const [selectedChatOutletId, setSelectedChatOutletId] = useState<string | null>(null);
   const [selectedChatOrderId, setSelectedChatOrderId] = useState<string | undefined>(undefined);
+
+  // Filter strictly to current student's orders
+  const studentOrders = orders.filter((o) => {
+    if (!user) return false;
+    return o.studentId === user.id || (user.id === 'stu-demo-01' && o.studentId.startsWith('stu-demo'));
+  });
 
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
@@ -60,7 +66,7 @@ export const StudentOrdersPage: React.FC = () => {
         </p>
       </div>
 
-      {orders.length === 0 ? (
+      {studentOrders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px' }}>
           <ShoppingBag size={48} color="var(--text-light)" style={{ margin: '0 auto 12px auto' }} />
           <h4 style={{ fontSize: 17, fontWeight: 800 }}>No orders placed yet</h4>
@@ -70,7 +76,7 @@ export const StudentOrdersPage: React.FC = () => {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {orders.map((order) => {
+          {studentOrders.map((order) => {
             const statusConfig = getStatusBadge(order.status);
             const StatusIcon = statusConfig.icon;
             const isLive = order.status !== 'Completed';

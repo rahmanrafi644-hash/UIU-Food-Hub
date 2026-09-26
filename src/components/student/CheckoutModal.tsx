@@ -83,7 +83,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     return `${fmt(start)} – ${fmt(end)}`;
   };
 
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
     setIsSubmitting(true);
     setErrorMsg(null);
 
@@ -96,7 +96,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       ? 'Within 15 mins (ASAP)'
       : `${computedTargetTime} (${timingPreset === '60m' ? 'In 1 hour' : `In ${offset}m`})`;
 
-    const result = createOrder({
+    const result = await createOrder({
       outletId: targetOutletId,
       pickupType: isScheduled ? 'Schedule Pickup' : 'ASAP',
       pickupDate: isScheduled ? pickupDate : 'Today',
