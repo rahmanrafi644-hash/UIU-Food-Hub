@@ -4,7 +4,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // Environment variables
 const metaEnv = (import.meta as any).env || {};
 const supabaseUrl: string = metaEnv.VITE_SUPABASE_URL || '';
-const supabaseAnonKey: string = metaEnv.VITE_SUPABASE_ANON_KEY || '';
+const supabaseAnonKey: string =
+  metaEnv.VITE_SUPABASE_ANON_KEY || metaEnv.VITE_SUPABASE_PUBLISHABLE_KEY || '';
 
 // Fallback dummy client if credentials are not yet configured in .env.local
 export const isSupabaseConfigured = (): boolean => {
