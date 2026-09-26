@@ -215,6 +215,50 @@ export const resendSupabaseVerification = async (email: string) => {
 };
 
 /**
+ * Verify OTP / 6-digit verification code with Supabase
+ */
+export const verifyOtpWithSupabase = async (
+  email: string,
+  token: string,
+  type: 'signup' | 'email' = 'signup'
+) => {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: 'Supabase credentials are not configured.' };
+  }
+
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanToken = token.trim();
+
+    // 1. Try with specified type (default: signup)
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: cleanEmail,
+      token: cleanToken,
+      type: type,
+    });
+
+    if (error) {
+      // 2. If 'signup' fails, try 'email' type as fallback
+      if (type === 'signup') {
+        const retryRes = await supabase.auth.verifyOtp({
+          email: cleanEmail,
+          token: cleanToken,
+          type: 'email',
+        });
+        if (!retryRes.error) {
+          return { success: true, user: retryRes.data.user, session: retryRes.data.session };
+        }
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, user: data.user, session: data.session };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'OTP verification failed.' };
+  }
+};
+
+/**
  * Request Password Reset
  */
 export const requestPasswordReset = async (email: string) => {

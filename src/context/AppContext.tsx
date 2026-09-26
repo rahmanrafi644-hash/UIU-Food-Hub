@@ -29,9 +29,41 @@ import {
   isSupabaseConfigured,
   loginWithSupabase,
   signOutSupabase,
+  registerStudentWithSupabase,
+  registerVendorWithSupabase,
+  verifyOtpWithSupabase,
+  resendSupabaseVerification,
 } from '../services/supabase';
 
 const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V4';
+const USERS_STORAGE_KEY = 'UIU_FOOD_HUB_REGISTERED_USERS_V2';
+const PENDING_STORAGE_KEY = 'UIU_FOOD_HUB_PENDING_VERIFY_V2';
+
+export interface RegisteredUser {
+  id: string;
+  email: string;
+  password?: string;
+  role: UserRole;
+  fullName: string;
+  phone?: string;
+  studentId?: string;
+  vendorOutletId?: string;
+  vendorOutletName?: string;
+  isVerified: boolean;
+}
+
+export interface PendingVerification {
+  email: string;
+  role: 'student' | 'vendor';
+  fullName: string;
+  phone: string;
+  studentId?: string;
+  vendorOutletId?: string;
+  vendorOutletName?: string;
+  password?: string;
+  otpCode: string;
+  createdAt: number;
+}
 
 interface AppContextType {
   // Auth & Outlet Scoping
@@ -42,6 +74,23 @@ interface AppContextType {
     role?: 'student' | 'vendor',
     outletId?: string
   ) => Promise<{ success: boolean; isUnconfirmed?: boolean; error?: string }>;
+  registerUser: (params: {
+    role: 'student' | 'vendor';
+    fullName: string;
+    email: string;
+    phone: string;
+    studentId?: string;
+    vendorOutletId?: string;
+    vendorOutletName?: string;
+    password: string;
+  }) => Promise<{ success: boolean; needsVerification: boolean; otpCode?: string; error?: string }>;
+  verifyAccountOtp: (
+    email: string,
+    enteredOtp: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  resendAccountOtp: (
+    email: string
+  ) => Promise<{ success: boolean; otpCode?: string; error?: string }>;
   logout: () => Promise<void>;
   activeVendorOutlet: CampusOutlet | null;
   switchVendorOutlet: (outletId: string) => void;
@@ -240,6 +289,30 @@ const INITIAL_DEMO_MESSAGES: ChatMessage[] = [
   },
 ];
 
+const INITIAL_REGISTERED_USERS: RegisteredUser[] = [
+  {
+    id: 'stu-demo-01',
+    email: 'student@uiu.ac.bd',
+    password: 'demo123',
+    role: 'student',
+    fullName: 'Sayed Rafy (Student)',
+    studentId: '011211048',
+    phone: '+880 1711-223344',
+    isVerified: true,
+  },
+  {
+    id: 'ven-demo-01',
+    email: 'vendor@uiu.ac.bd',
+    password: 'demo123',
+    role: 'vendor',
+    fullName: "Khan's Kitchen Manager",
+    phone: '+880 1812-998877',
+    vendorOutletId: 'khans-kitchen',
+    vendorOutletName: "Khan's Kitchen",
+    isVerified: true,
+  },
+];
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const loadState = () => {
     try {
@@ -253,7 +326,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return null;
   };
 
+  const loadRegisteredUsers = (): RegisteredUser[] => {
+    try {
+      const saved = localStorage.getItem(USERS_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return INITIAL_REGISTERED_USERS;
+  };
+
+  const loadPendingVerification = (): PendingVerification | null => {
+    try {
+      const saved = localStorage.getItem(PENDING_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {}
+    return null;
+  };
+
   const persisted = loadState();
+
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>(loadRegisteredUsers());
+  const [pendingVerification, setPendingVerification] = useState<PendingVerification | null>(
+    loadPendingVerification()
+  );
 
   const [user, setUser] = useState<User | null>(persisted?.user || null);
   const [outlets, setOutlets] = useState<CampusOutlet[]>(persisted?.outlets || INITIAL_OUTLETS);
@@ -522,19 +620,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedOutletId?: string
   ): Promise<{ success: boolean; isUnconfirmed?: boolean; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
 
-    // 1. If Supabase is configured and a password is provided, perform real Supabase Auth
-    if (isSupabaseConfigured() && password) {
-      const res = await loginWithSupabase(cleanEmail, password);
-      if (!res.success) {
-        return {
-          success: false,
-          isUnconfirmed: res.isUnconfirmed,
-          error: res.error,
-        };
-      }
+    if (!cleanEmail) {
+      return { success: false, error: 'Please enter your university email address.' };
+    }
+    if (!cleanPassword) {
+      return { success: false, error: 'Please enter your account password.' };
+    }
 
-      if (res.user) {
+    // 1. If Supabase is configured, attempt real Supabase Authentication
+    if (isSupabaseConfigured()) {
+      const res = await loginWithSupabase(cleanEmail, cleanPassword);
+
+      if (res.success && res.user) {
         // Fetch user profile from database
         const { data: profile } = await supabase
           .from('profiles')
@@ -552,7 +651,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: profile?.full_name || res.user.user_metadata?.full_name || cleanEmail.split('@')[0],
           email: res.user.email || cleanEmail,
           role,
-          studentId: profile?.student_id || res.user.user_metadata?.student_id || '011211048',
+          studentId: profile?.student_id || res.user.user_metadata?.student_id,
           phone: profile?.phone || res.user.user_metadata?.phone,
           vendorOutletId: role === 'vendor' ? targetOutlet.id : undefined,
           vendorOutletName: role === 'vendor' ? targetOutlet.name : undefined,
@@ -562,34 +661,293 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchDbOrders(loggedInUser.id, loggedInUser.role, loggedInUser.vendorOutletId);
         return { success: true };
       }
+
+      if (res.isUnconfirmed) {
+        return {
+          success: false,
+          isUnconfirmed: true,
+          error: 'Please enter your 6-digit verification code to activate your account.',
+        };
+      }
     }
 
-    // 2. Demo / Local Fallback (if Supabase is not configured or demo credentials used)
-    if (requestedRole === 'student') {
-      const demoStudent: User = {
-        id: 'stu-demo-01',
-        name: 'Sayed Rafy (Student)',
-        email: cleanEmail || 'student@uiu.ac.bd',
-        role: 'student',
-        studentId: '011211048',
-        phone: '+880 1711-223344',
+    // 2. Check locally registered accounts (including demo and locally registered accounts)
+    const existing = registeredUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+
+    if (existing) {
+      if (!existing.isVerified) {
+        return {
+          success: false,
+          isUnconfirmed: true,
+          error: 'Account not verified. Please enter your 6-digit verification code.',
+        };
+      }
+
+      if (existing.password && existing.password !== cleanPassword) {
+        return { success: false, error: 'Incorrect password. Please try again.' };
+      }
+
+      const targetOutlet = outlets.find(
+        (o) => o.id === (existing.vendorOutletId || selectedOutletId)
+      ) || outlets[0];
+
+      const loggedInUser: User = {
+        id: existing.id,
+        name: existing.fullName,
+        email: existing.email,
+        role: existing.role,
+        studentId: existing.studentId,
+        phone: existing.phone,
+        vendorOutletId: existing.role === 'vendor' ? targetOutlet.id : undefined,
+        vendorOutletName: existing.role === 'vendor' ? targetOutlet.name : undefined,
       };
-      setUser(demoStudent);
-      return { success: true };
-    } else {
-      const targetOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
-      const demoVendor: User = {
-        id: `ven-${targetOutlet.id}`,
-        name: `${targetOutlet.name} Manager`,
-        email: cleanEmail || 'vendor@uiu.ac.bd',
-        role: 'vendor',
-        phone: '+880 1812-998877',
-        vendorOutletId: targetOutlet.id,
-        vendorOutletName: targetOutlet.name,
-      };
-      setUser(demoVendor);
+
+      setUser(loggedInUser);
       return { success: true };
     }
+
+    // 3. User does NOT exist in Supabase and NOT in registered users
+    return {
+      success: false,
+      error: 'No account found with this email. You must register before logging in.',
+    };
+  };
+
+  /**
+   * Register a new Student or Vendor account and dispatch 6-digit OTP
+   */
+  const registerUser = async (params: {
+    role: 'student' | 'vendor';
+    fullName: string;
+    email: string;
+    phone: string;
+    studentId?: string;
+    vendorOutletId?: string;
+    vendorOutletName?: string;
+    password: string;
+  }): Promise<{ success: boolean; needsVerification: boolean; otpCode?: string; error?: string }> => {
+    const cleanEmail = params.email.trim().toLowerCase();
+
+    // Check if already registered locally
+    const alreadyRegistered = registeredUsers.find(
+      (u) => u.email.toLowerCase() === cleanEmail && u.isVerified
+    );
+    if (alreadyRegistered) {
+      return {
+        success: false,
+        needsVerification: false,
+        error: 'An account with this email is already registered. Please sign in instead.',
+      };
+    }
+
+    // Generate a secure 6-digit verification OTP code
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Supabase Registration if configured
+    if (isSupabaseConfigured()) {
+      if (params.role === 'student') {
+        const supaRes = await registerStudentWithSupabase({
+          fullName: params.fullName,
+          email: cleanEmail,
+          phone: params.phone,
+          studentId: params.studentId,
+          password: params.password,
+        });
+        if (!supaRes.success) {
+          return { success: false, needsVerification: false, error: supaRes.error };
+        }
+      } else {
+        const supaRes = await registerVendorWithSupabase({
+          vendorName: params.fullName,
+          outletId: params.vendorOutletId || 'khans-kitchen',
+          outletName: params.vendorOutletName || "Khan's Kitchen",
+          email: cleanEmail,
+          phone: params.phone,
+          password: params.password,
+        });
+        if (!supaRes.success) {
+          return { success: false, needsVerification: false, error: supaRes.error };
+        }
+      }
+    }
+
+    // Record pending verification state
+    const pendingData: PendingVerification = {
+      email: cleanEmail,
+      role: params.role,
+      fullName: params.fullName.trim(),
+      phone: params.phone.trim(),
+      studentId: params.studentId?.trim(),
+      vendorOutletId: params.vendorOutletId,
+      vendorOutletName: params.vendorOutletName,
+      password: params.password,
+      otpCode: generatedOtp,
+      createdAt: Date.now(),
+    };
+
+    setPendingVerification(pendingData);
+    try {
+      localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pendingData));
+    } catch {}
+
+    // Add unverified account placeholder to registeredUsers
+    const pendingAccountRecord: RegisteredUser = {
+      id: `pending-${Date.now()}`,
+      email: cleanEmail,
+      password: params.password,
+      role: params.role,
+      fullName: params.fullName.trim(),
+      phone: params.phone.trim(),
+      studentId: params.studentId?.trim(),
+      vendorOutletId: params.vendorOutletId,
+      vendorOutletName: params.vendorOutletName,
+      isVerified: false,
+    };
+
+    setRegisteredUsers((prev) => {
+      const filtered = prev.filter((u) => u.email.toLowerCase() !== cleanEmail);
+      const updated = [...filtered, pendingAccountRecord];
+      try {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    return {
+      success: true,
+      needsVerification: true,
+      otpCode: generatedOtp,
+    };
+  };
+
+  /**
+   * Verify the 6-digit code and activate the account
+   */
+  const verifyAccountOtp = async (
+    email: string,
+    enteredOtp: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = enteredOtp.trim();
+
+    if (!cleanCode || cleanCode.length !== 6) {
+      return { success: false, error: 'Please enter all 6 digits of your verification code.' };
+    }
+
+    let pending = pendingVerification;
+    if (!pending || pending.email !== cleanEmail) {
+      try {
+        const savedPending = localStorage.getItem(PENDING_STORAGE_KEY);
+        if (savedPending) {
+          const parsed = JSON.parse(savedPending);
+          if (parsed?.email === cleanEmail) {
+            pending = parsed;
+          }
+        }
+      } catch {}
+    }
+
+    // 1. Attempt Supabase OTP verification if configured
+    let verifiedViaSupabase = false;
+    let supaUser: any = null;
+    if (isSupabaseConfigured()) {
+      const res = await verifyOtpWithSupabase(cleanEmail, cleanCode, 'signup');
+      if (res.success && res.user) {
+        verifiedViaSupabase = true;
+        supaUser = res.user;
+      }
+    }
+
+    // 2. Validate against either Supabase or pending generated OTP
+    const isCodeMatch = verifiedViaSupabase || (pending && pending.otpCode === cleanCode);
+
+    if (!isCodeMatch) {
+      return {
+        success: false,
+        error: 'Invalid 6-digit verification code. Please check your code and try again.',
+      };
+    }
+
+    // 3. Activated! Create and persist registered user
+    const targetOutlet = outlets.find(
+      (o) => o.id === (pending?.vendorOutletId || supaUser?.user_metadata?.vendor_outlet_id)
+    ) || outlets[0];
+
+    const newUser: User = {
+      id: supaUser?.id || `user-${Date.now()}`,
+      name: pending?.fullName || supaUser?.user_metadata?.full_name || cleanEmail.split('@')[0],
+      email: cleanEmail,
+      role: (pending?.role || supaUser?.user_metadata?.role || 'student') as UserRole,
+      studentId: pending?.studentId || supaUser?.user_metadata?.student_id,
+      phone: pending?.phone || supaUser?.user_metadata?.phone,
+      vendorOutletId: (pending?.role || supaUser?.user_metadata?.role) === 'vendor' ? targetOutlet.id : undefined,
+      vendorOutletName: (pending?.role || supaUser?.user_metadata?.role) === 'vendor' ? targetOutlet.name : undefined,
+    };
+
+    const regRecord: RegisteredUser = {
+      id: newUser.id,
+      email: cleanEmail,
+      password: pending?.password,
+      role: newUser.role,
+      fullName: newUser.name,
+      phone: newUser.phone,
+      studentId: newUser.studentId,
+      vendorOutletId: newUser.vendorOutletId,
+      vendorOutletName: newUser.vendorOutletName,
+      isVerified: true,
+    };
+
+    setRegisteredUsers((prev) => {
+      const filtered = prev.filter((u) => u.email.toLowerCase() !== cleanEmail);
+      const updated = [...filtered, regRecord];
+      try {
+        localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    // Clear pending verification
+    setPendingVerification(null);
+    try {
+      localStorage.removeItem(PENDING_STORAGE_KEY);
+    } catch {}
+
+    // Log the activated user in
+    setUser(newUser);
+    return { success: true };
+  };
+
+  /**
+   * Resend 6-digit OTP code with new dispatch
+   */
+  const resendAccountOtp = async (
+    email: string
+  ): Promise<{ success: boolean; otpCode?: string; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    if (isSupabaseConfigured()) {
+      await resendSupabaseVerification(cleanEmail);
+    }
+
+    setPendingVerification((prev) => {
+      const updated: PendingVerification = prev
+        ? { ...prev, otpCode: newOtp, createdAt: Date.now() }
+        : {
+            email: cleanEmail,
+            role: 'student' as const,
+            fullName: cleanEmail.split('@')[0],
+            phone: '',
+            otpCode: newOtp,
+            createdAt: Date.now(),
+          };
+      try {
+        localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    return { success: true, otpCode: newOtp };
   };
 
   const switchVendorOutlet = (outletId: string) => {
@@ -608,6 +966,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = async () => {
     await signOutSupabase();
     setUser(null);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        delete parsed.user;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      }
+    } catch {}
   };
 
   const updateOutletOperationalStatus = (outletId: string, status: OutletOperationalStatus) => {
@@ -1182,6 +1548,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         user,
         login,
+        registerUser,
+        verifyAccountOtp,
+        resendAccountOtp,
         logout,
         activeVendorOutlet,
         switchVendorOutlet,

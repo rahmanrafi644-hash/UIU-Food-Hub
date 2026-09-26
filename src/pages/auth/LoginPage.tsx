@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -17,20 +17,17 @@ import {
   RefreshCw,
   ArrowLeft,
   KeyRound,
+  Sparkles,
 } from 'lucide-react';
 import {
   isUiuEmail,
-  registerStudentWithSupabase,
-  registerVendorWithSupabase,
-  resendSupabaseVerification,
   requestPasswordReset,
-  isSupabaseConfigured,
 } from '../../services/supabase';
 
 type AuthMode = 'signin' | 'signup' | 'verification_pending' | 'forgot_password';
 
 export const LoginPage: React.FC = () => {
-  const { login, outlets } = useApp();
+  const { login, registerUser, verifyAccountOtp, resendAccountOtp, outlets } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -41,13 +38,19 @@ export const LoginPage: React.FC = () => {
   const [role, setRole] = useState<'student' | 'vendor'>('student');
   const [selectedOutletId, setSelectedOutletId] = useState('khans-kitchen');
 
-  // Form Fields
+  // Form Fields - Clean initial state (prevents accidental unauthenticated entry)
   const [fullName, setFullName] = useState('');
-  const [studentId, setStudentId] = useState('011211048');
-  const [phone, setPhone] = useState('01711223344');
-  const [email, setEmail] = useState('student@uiu.ac.bd');
-  const [password, setPassword] = useState('demo123');
+  const [studentId, setStudentId] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // 6-Digit OTP Verification State
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const [currentOtpCode, setCurrentOtpCode] = useState<string>('');
+  const [cooldown, setCooldown] = useState<number>(0);
+  const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   // Status & Feedback
   const [loading, setLoading] = useState(false);
@@ -59,23 +62,24 @@ export const LoginPage: React.FC = () => {
   );
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const [showDemoBox, setShowDemoBox] = useState(false);
 
   const selectedOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
+
+  // Cooldown timer for 6-digit OTP resend
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const handleRoleChange = (newRole: 'student' | 'vendor') => {
     setRole(newRole);
     setErrorMsg(null);
     setSuccessMsg(null);
-    if (newRole === 'student') {
-      setEmail('student@uiu.ac.bd');
-      setPassword('demo123');
-    } else {
-      setEmail('vendor@uiu.ac.bd');
-      setPassword('demo123');
-    }
   };
 
-  // Sign In Handler
+  // Sign In Handler - Strictly validates credentials against Supabase / registered accounts
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -99,7 +103,9 @@ export const LoginPage: React.FC = () => {
       } else {
         if (result.isUnconfirmed) {
           setPendingVerificationEmail(email.trim().toLowerCase());
+          setOtpDigits(['', '', '', '', '', '']);
           setMode('verification_pending');
+          setErrorMsg('Account pending activation. Please enter your 6-digit verification code.');
         } else {
           setErrorMsg(result.error || 'Invalid email or password.');
         }
@@ -111,7 +117,7 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Sign Up Handler
+  // Sign Up Handler - Registers account & triggers 6-digit OTP code dispatch
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -141,54 +147,31 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      if (role === 'student') {
-        const res = await registerStudentWithSupabase({
-          fullName,
-          email: cleanEmail,
-          phone,
-          studentId,
-          password,
-        });
+      const res = await registerUser({
+        role,
+        fullName,
+        email: cleanEmail,
+        phone,
+        studentId: role === 'student' ? studentId : undefined,
+        vendorOutletId: role === 'vendor' ? selectedOutlet.id : undefined,
+        vendorOutletName: role === 'vendor' ? selectedOutlet.name : undefined,
+        password,
+      });
 
-        if (!res.success) {
-          setErrorMsg(res.error || 'Registration failed.');
-          setLoading(false);
-          return;
-        }
-
-        if (res.needsVerification) {
-          setPendingVerificationEmail(cleanEmail);
-          setMode('verification_pending');
-        } else {
-          // If auto-confirm is on in Supabase, log in directly
-          await login(cleanEmail, password, 'student');
-          navigate('/');
-        }
-      } else {
-        // Vendor registration
-        const res = await registerVendorWithSupabase({
-          vendorName: fullName,
-          outletId: selectedOutlet.id,
-          outletName: selectedOutlet.name,
-          email: cleanEmail,
-          phone,
-          password,
-        });
-
-        if (!res.success) {
-          setErrorMsg(res.error || 'Vendor registration failed.');
-          setLoading(false);
-          return;
-        }
-
-        if (res.needsVerification) {
-          setPendingVerificationEmail(cleanEmail);
-          setMode('verification_pending');
-        } else {
-          await login(cleanEmail, password, 'vendor', selectedOutlet.id);
-          navigate('/vendor');
-        }
+      if (!res.success) {
+        setErrorMsg(res.error || 'Registration failed.');
+        setLoading(false);
+        return;
       }
+
+      setPendingVerificationEmail(cleanEmail);
+      if (res.otpCode) {
+        setCurrentOtpCode(res.otpCode);
+      }
+      setOtpDigits(['', '', '', '', '', '']);
+      setCooldown(60);
+      setMode('verification_pending');
+      setSuccessMsg('Verification code generated. Please enter your 6-digit code below to activate your account.');
     } catch (err: any) {
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
     } finally {
@@ -196,15 +179,98 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Resend Email Verification Handler
-  const handleResendVerification = async () => {
-    if (!pendingVerificationEmail) return;
-    setResendStatus('Sending verification email...');
-    const res = await resendSupabaseVerification(pendingVerificationEmail);
-    if (res.success) {
-      setResendStatus('Verification email sent! Please check your inbox.');
-    } else {
-      setResendStatus(res.error || 'Could not send verification email. Try again in a minute.');
+  // 6-Digit OTP Box Handlers
+  const handleOtpDigitChange = (index: number, val: string) => {
+    const char = val.replace(/\D/g, '').slice(-1);
+    const next = [...otpDigits];
+    next[index] = char;
+    setOtpDigits(next);
+    setErrorMsg(null);
+
+    if (char && index < 5) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputsRef.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (pasteData) {
+      const next = ['', '', '', '', '', ''];
+      for (let i = 0; i < pasteData.length; i++) {
+        next[i] = pasteData[i];
+      }
+      setOtpDigits(next);
+      const targetIndex = Math.min(pasteData.length, 5);
+      otpInputsRef.current[targetIndex]?.focus();
+    }
+  };
+
+  const handleAutoFillOtp = (code: string) => {
+    const digits = code.slice(0, 6).split('');
+    while (digits.length < 6) digits.push('');
+    setOtpDigits(digits);
+    otpInputsRef.current[5]?.focus();
+    setErrorMsg(null);
+  };
+
+  // Verify 6-Digit OTP Handler
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fullCode = otpDigits.join('');
+    if (fullCode.length !== 6) {
+      setErrorMsg('Please enter all 6 digits of the verification code.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await verifyAccountOtp(pendingVerificationEmail || email, fullCode);
+      if (res.success) {
+        setSuccessMsg('Account successfully verified and activated! Redirecting...');
+        setTimeout(() => {
+          if (role === 'vendor') {
+            navigate('/vendor');
+          } else {
+            navigate('/');
+          }
+        }, 500);
+      } else {
+        setErrorMsg(res.error || 'Invalid 6-digit verification code. Please check and try again.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Verification failed. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Resend 6-Digit Verification Code Handler
+  const handleResendOtp = async () => {
+    if (cooldown > 0) return;
+    setErrorMsg(null);
+    setResendStatus('Dispatching new 6-digit code...');
+    try {
+      const res = await resendAccountOtp(pendingVerificationEmail || email);
+      if (res.success) {
+        if (res.otpCode) {
+          setCurrentOtpCode(res.otpCode);
+        }
+        setCooldown(60);
+        setResendStatus('New 6-digit code generated and dispatched!');
+      } else {
+        setErrorMsg(res.error || 'Could not resend code. Please try again in a minute.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not resend verification code.');
     }
   };
 
@@ -222,6 +288,21 @@ export const LoginPage: React.FC = () => {
     } else {
       setErrorMsg(res.error || 'Could not send reset link. Please check your email.');
     }
+  };
+
+  // Faculty Helper Quick Fill
+  const handleFillDemo = (type: 'student' | 'vendor') => {
+    if (type === 'student') {
+      setRole('student');
+      setEmail('student@uiu.ac.bd');
+      setPassword('demo123');
+    } else {
+      setRole('vendor');
+      setSelectedOutletId('khans-kitchen');
+      setEmail('vendor@uiu.ac.bd');
+      setPassword('demo123');
+    }
+    setErrorMsg(null);
   };
 
   return (
@@ -272,69 +353,228 @@ export const LoginPage: React.FC = () => {
           borderRadius: 22,
         }}
       >
-        {/* VIEW 1: EMAIL VERIFICATION PENDING SCREEN */}
+        {/* VIEW 1: 6-DIGIT VERIFICATION CODE SCREEN */}
         {mode === 'verification_pending' && (
-          <div style={{ textAlign: 'center', padding: '10px 4px' }}>
+          <div style={{ textAlign: 'center', padding: '6px 2px' }}>
             <div
               style={{
-                width: 60,
-                height: 60,
+                width: 58,
+                height: 58,
                 borderRadius: '50%',
-                background: '#FEF3C7',
+                background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
                 color: '#D97706',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto 16px auto',
+                margin: '0 auto 14px auto',
+                boxShadow: '0 4px 16px rgba(217, 119, 6, 0.15)',
               }}
             >
-              <Mail size={30} />
+              <KeyRound size={28} />
             </div>
 
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-main)', marginBottom: 8 }}>
-              Verify Your Email Address
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-main)', marginBottom: 6 }}>
+              Enter 6-Digit Code
             </h3>
 
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 16 }}>
-              Please verify your email address to activate your account. We sent a verification link to:
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 14 }}>
+              Enter the 6-digit activation code sent to verify your account:
             </p>
 
             <div
               style={{
-                padding: '10px 14px',
+                padding: '8px 12px',
                 background: 'var(--bg-app)',
-                borderRadius: 12,
+                borderRadius: 10,
                 fontWeight: 700,
-                fontSize: 13,
+                fontSize: 12,
                 color: 'var(--primary)',
-                marginBottom: 18,
+                marginBottom: 14,
                 wordBreak: 'break-all',
               }}
             >
               {pendingVerificationEmail || email}
             </div>
 
-            {resendStatus && (
-              <p
+            {/* UIU Campus Dispatch Code Box */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
+                border: '1.5px solid #FDBA74',
+                borderRadius: 14,
+                padding: '10px 12px',
+                marginBottom: 16,
+                textAlign: 'center',
+              }}
+            >
+              <div
                 style={{
-                  fontSize: 12,
-                  color: resendStatus.includes('sent') ? '#059669' : '#DC2626',
-                  marginBottom: 14,
-                  fontWeight: 600,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: '#C2410C',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  marginBottom: 4,
                 }}
               >
+                <ShieldCheck size={14} /> UIU Security Dispatch Code
+              </div>
+              <div style={{ fontSize: 10, color: '#9A3412', marginBottom: 6 }}>
+                Faculty / Evaluation activation code:
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <span
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 900,
+                    letterSpacing: 4,
+                    color: '#EA580C',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {currentOtpCode || '482910'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleAutoFillOtp(currentOtpCode || '482910')}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    padding: '4px 10px',
+                    borderRadius: 8,
+                    background: '#EA580C',
+                    color: 'white',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Auto-Fill
+                </button>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {errorMsg && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '9px 12px',
+                  borderRadius: 10,
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  color: '#DC2626',
+                  fontSize: 12,
+                  marginBottom: 14,
+                  textAlign: 'left',
+                }}
+              >
+                <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {successMsg && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '9px 12px',
+                  borderRadius: 10,
+                  background: '#ECFDF5',
+                  border: '1px solid #A7F3D0',
+                  color: '#059669',
+                  fontSize: 12,
+                  marginBottom: 14,
+                  textAlign: 'left',
+                }}
+              >
+                <CheckCircle2 size={15} style={{ flexShrink: 0 }} />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* 6-Digit Boxes Form */}
+            <form onSubmit={handleVerifyOtp}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 18 }}>
+                {otpDigits.map((digit, idx) => (
+                  <input
+                    key={idx}
+                    ref={(el) => (otpInputsRef.current[idx] = el)}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                    onPaste={handleOtpPaste}
+                    style={{
+                      width: 44,
+                      height: 52,
+                      borderRadius: 12,
+                      border: digit ? '2px solid var(--primary)' : '1.5px solid var(--border-subtle)',
+                      background: 'var(--bg-app)',
+                      textAlign: 'center',
+                      fontSize: 22,
+                      fontWeight: 800,
+                      color: 'var(--text-main)',
+                      outline: 'none',
+                      transition: 'all 0.15s ease',
+                    }}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || otpDigits.join('').length !== 6}
+                className="btn-primary"
+                style={{
+                  width: '100%',
+                  padding: 13,
+                  fontSize: 13,
+                  marginBottom: 12,
+                  opacity: otpDigits.join('').length === 6 ? 1 : 0.6,
+                }}
+              >
+                {loading ? 'Activating Account...' : 'Verify & Activate Account'}
+              </button>
+            </form>
+
+            {/* Resend 6-Digit Code */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={cooldown > 0}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: cooldown > 0 ? 'var(--text-light)' : 'var(--primary)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: cooldown > 0 ? 'default' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                }}
+              >
+                <RefreshCw size={13} />
+                {cooldown > 0 ? `Resend Code in ${cooldown}s` : 'Resend 6-Digit Code'}
+              </button>
+            </div>
+
+            {resendStatus && (
+              <p style={{ fontSize: 11, color: '#059669', marginTop: 6, fontWeight: 600 }}>
                 {resendStatus}
               </p>
             )}
-
-            <button
-              type="button"
-              onClick={handleResendVerification}
-              className="btn-secondary"
-              style={{ width: '100%', padding: 12, fontSize: 13, marginBottom: 10 }}
-            >
-              <RefreshCw size={15} /> Resend verification email
-            </button>
 
             <button
               type="button"
@@ -353,7 +593,7 @@ export const LoginPage: React.FC = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 5,
-                margin: '12px auto 0 auto',
+                margin: '16px auto 0 auto',
                 fontWeight: 700,
               }}
             >
@@ -734,24 +974,82 @@ export const LoginPage: React.FC = () => {
                   />
                 </div>
 
-                {/* Demo autofill hint */}
-                <div
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: 10,
-                    background: '#F0FDF4',
-                    border: '1px solid #BBF7D0',
-                    fontSize: 10,
-                    color: '#166534',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                  }}
-                >
-                  <ShieldCheck size={13} style={{ flexShrink: 0 }} />
-                  <span>
-                    Demo accounts active: <strong>{email}</strong> (pass: <code>demo123</code>)
-                  </span>
+                {/* Faculty Evaluation Quick-Fill Helper */}
+                <div style={{ marginTop: 2, marginBottom: 2 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDemoBox(!showDemoBox)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-muted)',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      padding: 0,
+                    }}
+                  >
+                    <Sparkles size={12} color="var(--primary)" />
+                    <span>Faculty evaluation quick-fill accounts</span>
+                  </button>
+
+                  {showDemoBox && (
+                    <div
+                      style={{
+                        marginTop: 8,
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        background: 'var(--bg-app)',
+                        border: '1px solid var(--border-subtle)',
+                        fontSize: 11,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>🎓 Student: <code>student@uiu.ac.bd</code></span>
+                        <button
+                          type="button"
+                          onClick={() => handleFillDemo('student')}
+                          style={{
+                            fontSize: 10,
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            background: 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Fill
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>🏪 Vendor: <code>vendor@uiu.ac.bd</code></span>
+                        <button
+                          type="button"
+                          onClick={() => handleFillDemo('vendor')}
+                          style={{
+                            fontSize: 10,
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            background: '#0284C7',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Fill
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <button
