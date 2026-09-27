@@ -73,6 +73,14 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
+  // Check URL query parameters (e.g. from Supabase email verification redirect)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === 'true') {
+      setSuccessMsg('Email successfully confirmed! You can now sign in with your credentials.');
+    }
+  }, []);
+
   const handleRoleChange = (newRole: 'student' | 'vendor') => {
     setRole(newRole);
     setErrorMsg(null);
@@ -294,11 +302,11 @@ export const LoginPage: React.FC = () => {
   const handleFillDemo = (type: 'bba_student' | 'cse_student' | 'vendor') => {
     if (type === 'bba_student') {
       setRole('student');
-      setEmail('mrahman2330209@bba.uiu.ac.bd');
+      setEmail('demo.student@bba.uiu.ac.bd');
       setPassword('demo123');
     } else if (type === 'cse_student') {
       setRole('student');
-      setEmail('student@cse.uiu.ac.bd');
+      setEmail('demo.student@cse.uiu.ac.bd');
       setPassword('demo123');
     } else {
       setRole('vendor');
@@ -672,7 +680,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. mrahman2330209@bba.uiu.ac.bd"
+                  placeholder="e.g. mrahman2330209@bba.uiu.ac.bd or geuh@cse.uiu.ac.bd"
                   style={{
                     width: '100%',
                     padding: '12px 14px',
@@ -926,7 +934,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={role === 'student' ? 'e.g. mrahman2330209@bba.uiu.ac.bd' : 'vendor@email.com'}
+                    placeholder={role === 'student' ? 'e.g. mrahman2330209@bba.uiu.ac.bd or geuh@cse.uiu.ac.bd' : 'vendor@email.com'}
                     style={{
                       width: '100%',
                       padding: '11px 12px',
@@ -1015,7 +1023,7 @@ export const LoginPage: React.FC = () => {
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>🎓 BBA: <code>mrahman2330209@bba.uiu.ac.bd</code></span>
+                        <span>🎓 BBA: <code>demo.student@bba.uiu.ac.bd</code></span>
                         <button
                           type="button"
                           onClick={() => handleFillDemo('bba_student')}
@@ -1034,7 +1042,7 @@ export const LoginPage: React.FC = () => {
                         </button>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>🎓 CSE: <code>student@cse.uiu.ac.bd</code></span>
+                        <span>🎓 CSE: <code>demo.student@cse.uiu.ac.bd</code></span>
                         <button
                           type="button"
                           onClick={() => handleFillDemo('cse_student')}
@@ -1118,7 +1126,7 @@ export const LoginPage: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={role === 'student' ? 'e.g. mrahman2330209@bba.uiu.ac.bd' : 'vendor@example.com'}
+                    placeholder={role === 'student' ? 'e.g. mrahman2330209@bba.uiu.ac.bd or geuh@cse.uiu.ac.bd' : 'vendor@example.com'}
                     style={{
                       width: '100%',
                       padding: '10px 12px',
@@ -1131,7 +1139,7 @@ export const LoginPage: React.FC = () => {
                   />
                   {role === 'student' && (
                     <span style={{ fontSize: 10, color: '#D97706', fontWeight: 600, marginTop: 2, display: 'block' }}>
-                      * Must end with .uiu.ac.bd (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd)
+                      * Any UIU department accepted (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd, @eee.uiu.ac.bd)
                     </span>
                   )}
                 </div>

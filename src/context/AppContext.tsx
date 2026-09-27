@@ -35,9 +35,9 @@ import {
   resendSupabaseVerification,
 } from '../services/supabase';
 
-const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V4';
-const USERS_STORAGE_KEY = 'UIU_FOOD_HUB_REGISTERED_USERS_V2';
-const PENDING_STORAGE_KEY = 'UIU_FOOD_HUB_PENDING_VERIFY_V2';
+const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V6';
+const USERS_STORAGE_KEY = 'UIU_FOOD_HUB_REGISTERED_USERS_V6';
+const PENDING_STORAGE_KEY = 'UIU_FOOD_HUB_PENDING_VERIFY_V6';
 
 export interface RegisteredUser {
   id: string;
@@ -292,32 +292,22 @@ const INITIAL_DEMO_MESSAGES: ChatMessage[] = [
 const INITIAL_REGISTERED_USERS: RegisteredUser[] = [
   {
     id: 'stu-demo-01',
-    email: 'mrahman2330209@bba.uiu.ac.bd',
+    email: 'demo.student@bba.uiu.ac.bd',
     password: 'demo123',
     role: 'student',
-    fullName: 'M. Rahman (BBA)',
-    studentId: '2330209',
+    fullName: 'Demo Student (BBA)',
+    studentId: '011211001',
     phone: '+880 1711-223344',
     isVerified: true,
   },
   {
     id: 'stu-demo-02',
-    email: 'student@cse.uiu.ac.bd',
+    email: 'demo.student@cse.uiu.ac.bd',
     password: 'demo123',
     role: 'student',
-    fullName: 'Sayed Rafy (CSE)',
-    studentId: '011211048',
+    fullName: 'Demo Student (CSE)',
+    studentId: '011211002',
     phone: '+880 1711-556677',
-    isVerified: true,
-  },
-  {
-    id: 'stu-demo-03',
-    email: 'student@uiu.ac.bd',
-    password: 'demo123',
-    role: 'student',
-    fullName: 'General UIU Student',
-    studentId: '011211099',
-    phone: '+880 1711-889900',
     isVerified: true,
   },
   {
@@ -748,15 +738,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }): Promise<{ success: boolean; needsVerification: boolean; otpCode?: string; error?: string }> => {
     const cleanEmail = params.email.trim().toLowerCase();
 
-    // Check if already registered locally
+    // Check if already registered locally (ignore seeded demo accounts so they can be re-tested freshly)
     const alreadyRegistered = registeredUsers.find(
-      (u) => u.email.toLowerCase() === cleanEmail && u.isVerified
+      (u) =>
+        u.email.toLowerCase() === cleanEmail &&
+        u.isVerified &&
+        !u.id.startsWith('stu-demo') &&
+        !u.id.startsWith('ven-demo')
     );
     if (alreadyRegistered) {
       return {
         success: false,
         needsVerification: false,
-        error: 'An account with this email is already registered. Please sign in instead.',
+        error: 'An account with this email is already registered and verified. Please sign in instead.',
       };
     }
 
@@ -774,7 +768,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           password: params.password,
         });
         if (!supaRes.success) {
-          return { success: false, needsVerification: false, error: supaRes.error };
+          const errLower = (supaRes.error || '').toLowerCase();
+          // If Supabase reports user already registered from a prior run, trigger resend and allow code verification
+          if (errLower.includes('already registered') || errLower.includes('already exists')) {
+            console.log('Account exists in Supabase. Dispatching verification code...');
+            await resendSupabaseVerification(cleanEmail);
+          } else if (errLower.includes('rate limit') || errLower.includes('over_email_send_rate_limit')) {
+            console.warn('Supabase email rate limit reached (free tier: 3/hr). Proceeding with campus verification code.');
+          } else {
+            return { success: false, needsVerification: false, error: supaRes.error };
+          }
         }
       } else {
         const supaRes = await registerVendorWithSupabase({
@@ -786,7 +789,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           password: params.password,
         });
         if (!supaRes.success) {
-          return { success: false, needsVerification: false, error: supaRes.error };
+          const errLower = (supaRes.error || '').toLowerCase();
+          if (errLower.includes('already registered') || errLower.includes('already exists')) {
+            console.log('Vendor account exists in Supabase. Dispatching verification code...');
+            await resendSupabaseVerification(cleanEmail);
+          } else if (errLower.includes('rate limit') || errLower.includes('over_email_send_rate_limit')) {
+            console.warn('Supabase email rate limit reached. Proceeding with campus verification code.');
+          } else {
+            return { success: false, needsVerification: false, error: supaRes.error };
+          }
         }
       }
     }
