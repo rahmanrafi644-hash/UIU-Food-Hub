@@ -83,14 +83,21 @@ interface AppContextType {
     vendorOutletId?: string;
     vendorOutletName?: string;
     password: string;
-  }) => Promise<{ success: boolean; needsVerification: boolean; otpCode?: string; error?: string }>;
+  }) => Promise<{
+    success: boolean;
+    needsVerification: boolean;
+    otpCode?: string;
+    emailStatus?: 'sent' | 'rate_limited' | 'not_sent';
+    emailStatusMessage?: string;
+    error?: string;
+  }>;
   verifyAccountOtp: (
     email: string,
     enteredOtp: string
   ) => Promise<{ success: boolean; error?: string }>;
   resendAccountOtp: (
     email: string
-  ) => Promise<{ success: boolean; otpCode?: string; error?: string }>;
+  ) => Promise<{ success: boolean; otpCode?: string; emailStatus?: string; error?: string }>;
   logout: () => Promise<void>;
   activeVendorOutlet: CampusOutlet | null;
   switchVendorOutlet: (outletId: string) => void;
@@ -735,7 +742,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     vendorOutletId?: string;
     vendorOutletName?: string;
     password: string;
-  }): Promise<{ success: boolean; needsVerification: boolean; otpCode?: string; error?: string }> => {
+  }): Promise<{
+    success: boolean;
+    needsVerification: boolean;
+    otpCode?: string;
+    emailStatus?: 'sent' | 'rate_limited' | 'not_sent';
+    emailStatusMessage?: string;
+    error?: string;
+  }> => {
     const cleanEmail = params.email.trim().toLowerCase();
 
     // Check if already registered locally (ignore seeded demo accounts so they can be re-tested freshly)
@@ -757,6 +771,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Generate a secure 6-digit verification OTP code
     const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    let emailStatus: 'sent' | 'rate_limited' | 'not_sent' = 'not_sent';
+    let emailStatusMessage = '';
+
     // Supabase Registration if configured
     if (isSupabaseConfigured()) {
       if (params.role === 'student') {
@@ -767,14 +784,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           studentId: params.studentId,
           password: params.password,
         });
-        if (!supaRes.success) {
+        if (supaRes.success) {
+          emailStatus = 'sent';
+          emailStatusMessage = `Verification email dispatched to ${cleanEmail}! Please check your UIU Gmail inbox.`;
+        } else {
           const errLower = (supaRes.error || '').toLowerCase();
           // If Supabase reports user already registered from a prior run, trigger resend and allow code verification
           if (errLower.includes('already registered') || errLower.includes('already exists')) {
             console.log('Account exists in Supabase. Dispatching verification code...');
-            await resendSupabaseVerification(cleanEmail);
+            const resendRes = await resendSupabaseVerification(cleanEmail);
+            if (resendRes.success) {
+              emailStatus = 'sent';
+              emailStatusMessage = `Verification email resent to ${cleanEmail}. Check your inbox.`;
+            } else if (
+              resendRes.error?.toLowerCase().includes('rate limit') ||
+              resendRes.error?.toLowerCase().includes('over_email_send_rate_limit')
+            ) {
+              emailStatus = 'rate_limited';
+              emailStatusMessage =
+                'Supabase built-in mailer rate limit reached (free tier: 3 emails/hr). Please use your 6-digit campus activation code below.';
+            } else {
+              emailStatusMessage = resendRes.error || 'Please enter the 6-digit code below.';
+            }
           } else if (errLower.includes('rate limit') || errLower.includes('over_email_send_rate_limit')) {
-            console.warn('Supabase email rate limit reached (free tier: 3/hr). Proceeding with campus verification code.');
+            emailStatus = 'rate_limited';
+            emailStatusMessage =
+              'Supabase built-in mailer rate limit reached (free tier: 3 emails/hr). Please use your 6-digit campus activation code below.';
           } else {
             return { success: false, needsVerification: false, error: supaRes.error };
           }
@@ -788,13 +823,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           phone: params.phone,
           password: params.password,
         });
-        if (!supaRes.success) {
+        if (supaRes.success) {
+          emailStatus = 'sent';
+          emailStatusMessage = `Verification email dispatched to ${cleanEmail}!`;
+        } else {
           const errLower = (supaRes.error || '').toLowerCase();
           if (errLower.includes('already registered') || errLower.includes('already exists')) {
             console.log('Vendor account exists in Supabase. Dispatching verification code...');
-            await resendSupabaseVerification(cleanEmail);
+            const resendRes = await resendSupabaseVerification(cleanEmail);
+            if (resendRes.success) {
+              emailStatus = 'sent';
+              emailStatusMessage = `Verification email resent to ${cleanEmail}.`;
+            } else if (
+              resendRes.error?.toLowerCase().includes('rate limit') ||
+              resendRes.error?.toLowerCase().includes('over_email_send_rate_limit')
+            ) {
+              emailStatus = 'rate_limited';
+              emailStatusMessage =
+                'Supabase built-in mailer rate limit reached (free tier: 3 emails/hr). Please use your 6-digit campus activation code below.';
+            }
           } else if (errLower.includes('rate limit') || errLower.includes('over_email_send_rate_limit')) {
-            console.warn('Supabase email rate limit reached. Proceeding with campus verification code.');
+            emailStatus = 'rate_limited';
+            emailStatusMessage =
+              'Supabase built-in mailer rate limit reached (free tier: 3 emails/hr). Please use your 6-digit campus activation code below.';
           } else {
             return { success: false, needsVerification: false, error: supaRes.error };
           }
@@ -848,6 +899,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       success: true,
       needsVerification: true,
       otpCode: generatedOtp,
+      emailStatus,
+      emailStatusMessage,
     };
   };
 
@@ -953,12 +1006,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
    */
   const resendAccountOtp = async (
     email: string
-  ): Promise<{ success: boolean; otpCode?: string; error?: string }> => {
+  ): Promise<{ success: boolean; otpCode?: string; emailStatus?: string; error?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
     const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    let emailStatus = 'A new 6-digit campus activation code has been generated.';
 
     if (isSupabaseConfigured()) {
-      await resendSupabaseVerification(cleanEmail);
+      try {
+        const supaResend = await resendSupabaseVerification(cleanEmail);
+        if (supaResend.success) {
+          emailStatus = `Verification email resent to ${cleanEmail}. Please check your inbox.`;
+        } else if (
+          supaResend.error?.toLowerCase().includes('rate limit') ||
+          supaResend.error?.toLowerCase().includes('over_email_send_rate_limit')
+        ) {
+          emailStatus =
+            'Supabase built-in mailer rate limit reached (free tier: 3/hr limit). A new 6-digit campus code has been generated below.';
+        } else {
+          emailStatus = `Note: ${supaResend.error}`;
+        }
+      } catch (e: any) {
+        console.warn('Supabase resend attempt note:', e);
+      }
     }
 
     setPendingVerification((prev) => {
@@ -978,7 +1047,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    return { success: true, otpCode: newOtp };
+    return { success: true, otpCode: newOtp, emailStatus };
   };
 
   const switchVendorOutlet = (outletId: string) => {

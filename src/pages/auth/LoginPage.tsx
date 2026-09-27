@@ -179,7 +179,11 @@ export const LoginPage: React.FC = () => {
       setOtpDigits(['', '', '', '', '', '']);
       setCooldown(60);
       setMode('verification_pending');
-      setSuccessMsg('Verification code generated. Please enter your 6-digit code below to activate your account.');
+      if (res.emailStatusMessage) {
+        setSuccessMsg(res.emailStatusMessage);
+      } else {
+        setSuccessMsg('Account created! Please enter your 6-digit verification code below.');
+      }
     } catch (err: any) {
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
     } finally {
@@ -273,7 +277,7 @@ export const LoginPage: React.FC = () => {
           setCurrentOtpCode(res.otpCode);
         }
         setCooldown(60);
-        setResendStatus('New 6-digit code generated and dispatched!');
+        setResendStatus(res.emailStatus || 'New 6-digit code generated and dispatched!');
       } else {
         setErrorMsg(res.error || 'Could not resend code. Please try again in a minute.');
       }
@@ -434,7 +438,7 @@ export const LoginPage: React.FC = () => {
                 <ShieldCheck size={14} /> UIU Security Dispatch Code
               </div>
               <div style={{ fontSize: 10, color: '#9A3412', marginBottom: 6 }}>
-                Faculty / Evaluation activation code:
+                Direct campus activation code (bypasses email delays & free-tier limits):
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
                 <span
@@ -464,6 +468,9 @@ export const LoginPage: React.FC = () => {
                 >
                   Auto-Fill
                 </button>
+              </div>
+              <div style={{ fontSize: 10, color: '#9A3412', marginTop: 8, opacity: 0.9 }}>
+                💡 Tip: If your UIU Gmail is delayed by Supabase free-tier limits (3/hr), click <strong>Auto-Fill</strong> above to instantly activate your account.
               </div>
             </div>
 
