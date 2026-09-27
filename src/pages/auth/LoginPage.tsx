@@ -27,7 +27,7 @@ import {
 type AuthMode = 'signin' | 'signup' | 'verification_pending' | 'forgot_password';
 
 export const LoginPage: React.FC = () => {
-  const { login, registerUser, verifyAccountOtp, resendAccountOtp, outlets } = useApp();
+  const { login, registerUser, verifyAccountOtp, resendAccountOtp, loginAsVendorFree, outlets } = useApp();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -87,9 +87,14 @@ export const LoginPage: React.FC = () => {
     setSuccessMsg(null);
   };
 
-  // Sign In Handler - Strictly validates credentials against Supabase / registered accounts
+  // Sign In Handler - Strictly validates credentials for students, allows open direct access for vendors
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (role === 'vendor') {
+      loginAsVendorFree(selectedOutletId);
+      navigate('/vendor');
+      return;
+    }
     setErrorMsg(null);
     setSuccessMsg(null);
     setLoading(true);
@@ -98,16 +103,11 @@ export const LoginPage: React.FC = () => {
       const result = await login(
         email.trim().toLowerCase(),
         password,
-        role,
-        role === 'vendor' ? selectedOutletId : undefined
+        'student'
       );
 
       if (result.success) {
-        if (role === 'vendor') {
-          navigate('/vendor');
-        } else {
-          navigate('/');
-        }
+        navigate('/');
       } else {
         if (result.isUnconfirmed) {
           setPendingVerificationEmail(email.trim().toLowerCase());
@@ -125,9 +125,14 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  // Sign Up Handler - Registers account & triggers 6-digit OTP code dispatch
+  // Sign Up Handler - Registers account & triggers 6-digit OTP code dispatch (vendors enter directly)
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (role === 'vendor') {
+      loginAsVendorFree(selectedOutletId);
+      navigate('/vendor');
+      return;
+    }
     setErrorMsg(null);
     setSuccessMsg(null);
 
@@ -145,24 +150,20 @@ export const LoginPage: React.FC = () => {
     }
 
     // 2. Student Email Validation rule: MUST end in .uiu.ac.bd (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd)
-    if (role === 'student') {
-      if (!isUiuEmail(cleanEmail)) {
-        setErrorMsg('Students must register using a valid UIU institutional email address (e.g. yourid@bba.uiu.ac.bd, yourid@cse.uiu.ac.bd).');
-        return;
-      }
+    if (!isUiuEmail(cleanEmail)) {
+      setErrorMsg('Students must register using a valid UIU institutional email address (e.g. yourid@bba.uiu.ac.bd, yourid@cse.uiu.ac.bd).');
+      return;
     }
 
     setLoading(true);
 
     try {
       const res = await registerUser({
-        role,
+        role: 'student',
         fullName,
         email: cleanEmail,
         phone,
-        studentId: role === 'student' ? studentId : undefined,
-        vendorOutletId: role === 'vendor' ? selectedOutlet.id : undefined,
-        vendorOutletName: role === 'vendor' ? selectedOutlet.name : undefined,
+        studentId,
         password,
       });
 
@@ -830,7 +831,19 @@ export const LoginPage: React.FC = () => {
                 }}
               >
                 <Store size={15} />
-                Vendor Outlet
+                <span>Vendor Outlet</span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    padding: '2px 5px',
+                    borderRadius: 4,
+                    background: role === 'vendor' ? '#DCFCE7' : '#F3F4F6',
+                    color: '#166534',
+                    fontWeight: 800,
+                  }}
+                >
+                  Free
+                </span>
               </button>
             </div>
 
@@ -925,6 +938,101 @@ export const LoginPage: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, fontSize: 10, color: '#C25700' }}>
                   <MapPin size={10} />
                   <span>Scoped directly to <strong>{selectedOutlet.name}</strong>.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Direct Open / Free Vendor Portal for Faculty Evaluation */}
+            {role === 'vendor' && (
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #FFF7ED 0%, #FFEDD5 100%)',
+                  border: '2px solid #FDBA74',
+                  borderRadius: 16,
+                  padding: '16px',
+                  marginBottom: 16,
+                  textAlign: 'center',
+                  boxShadow: '0 4px 14px rgba(246, 137, 32, 0.12)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 10px',
+                    background: '#FED7AA',
+                    borderRadius: 20,
+                    color: '#9A3412',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    marginBottom: 8,
+                  }}
+                >
+                  <Sparkles size={13} /> Open Vendor Portal (Faculty Evaluation)
+                </div>
+
+                <h4 style={{ fontSize: 15, fontWeight: 800, color: '#9A3412', margin: '2px 0 6px 0' }}>
+                  Instant Direct Access for {selectedOutlet.name}
+                </h4>
+                <p style={{ fontSize: 11.5, color: '#C2410C', margin: '0 0 14px 0', lineHeight: 1.4 }}>
+                  No account registration or password required. Click below to enter the live operations dashboard for <strong>{selectedOutlet.name}</strong> immediately:
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    loginAsVendorFree(selectedOutletId);
+                    navigate('/vendor');
+                  }}
+                  className="btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '13px 18px',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    borderRadius: 12,
+                    boxShadow: '0 4px 14px rgba(246, 137, 32, 0.35)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Store size={18} /> Enter {selectedOutlet.name} Dashboard
+                </button>
+
+                {/* Outlet selector pills */}
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #FDBA74' }}>
+                  <span style={{ fontSize: 10, color: '#9A3412', fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                    Or select any other outlet to enter directly:
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                    {outlets.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedOutletId(o.id);
+                          loginAsVendorFree(o.id);
+                          navigate('/vendor');
+                        }}
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '4px 8px',
+                          borderRadius: 8,
+                          border: selectedOutletId === o.id ? '1.5px solid #EA580C' : '1px solid #FED7AA',
+                          background: selectedOutletId === o.id ? '#EA580C' : 'white',
+                          color: selectedOutletId === o.id ? 'white' : '#9A3412',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {o.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1250,7 +1358,7 @@ export const LoginPage: React.FC = () => {
                   className="btn-primary"
                   style={{ width: '100%', padding: 13, fontSize: 13, marginTop: 4 }}
                 >
-                  {loading ? 'Creating Account...' : `Register ${role === 'student' ? 'Student' : 'Vendor'} Account`} <ArrowRight size={15} />
+                  {loading ? 'Entering...' : role === 'vendor' ? 'Enter Vendor Dashboard (Direct Access)' : 'Register Student Account'} <ArrowRight size={15} />
                 </button>
               </form>
             )}

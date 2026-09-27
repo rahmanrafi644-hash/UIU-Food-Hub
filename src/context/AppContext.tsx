@@ -101,6 +101,8 @@ interface AppContextType {
   logout: () => Promise<void>;
   activeVendorOutlet: CampusOutlet | null;
   switchVendorOutlet: (outletId: string) => void;
+  loginAsVendorFree: (outletId?: string) => User;
+  loginAsStudentDemo: (dept?: 'bba' | 'cse') => User;
 
   // Data
   outlets: CampusOutlet[];
@@ -724,6 +726,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. User does NOT exist in Supabase and NOT in registered users
+    // Vendor accounts are 100% free & open for faculty evaluation!
+    if (requestedRole === 'vendor') {
+      const targetOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
+      const vendorUser: User = {
+        id: `ven-${targetOutlet.id}`,
+        name: `${targetOutlet.name} Manager`,
+        email: cleanEmail || `vendor@${targetOutlet.id}.uiu.ac.bd`,
+        role: 'vendor',
+        vendorOutletId: targetOutlet.id,
+        vendorOutletName: targetOutlet.name,
+      };
+      setUser(vendorUser);
+      fetchDbOrders(vendorUser.id, 'vendor', targetOutlet.id);
+      return { success: true };
+    }
+
     return {
       success: false,
       error: 'No account found with this email. You must register before logging in.',
@@ -1061,6 +1079,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       fetchDbOrders(user.id, 'vendor', target.id);
     }
+  };
+
+  const loginAsVendorFree = (outletId?: string): User => {
+    const target = outlets.find((o) => o.id === outletId) || outlets[0];
+    const vendorUser: User = {
+      id: `ven-${target.id}`,
+      name: `${target.name} Manager`,
+      email: `manager@${target.id}.uiu.ac.bd`,
+      role: 'vendor',
+      vendorOutletId: target.id,
+      vendorOutletName: target.name,
+    };
+    setUser(vendorUser);
+    fetchDbOrders(vendorUser.id, 'vendor', target.id);
+    return vendorUser;
+  };
+
+  const loginAsStudentDemo = (dept: 'bba' | 'cse' = 'bba'): User => {
+    const studentUser: User = {
+      id: dept === 'bba' ? 'stu-demo-01' : 'stu-demo-02',
+      name: dept === 'bba' ? 'Demo Student (BBA)' : 'Demo Student (CSE)',
+      email: dept === 'bba' ? 'demo.student@bba.uiu.ac.bd' : 'demo.student@cse.uiu.ac.bd',
+      role: 'student',
+      studentId: dept === 'bba' ? '011211001' : '011211002',
+      phone: '+880 1711-223344',
+    };
+    setUser(studentUser);
+    fetchDbOrders(studentUser.id, 'student');
+    return studentUser;
   };
 
   const logout = async () => {
@@ -1654,6 +1701,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         activeVendorOutlet,
         switchVendorOutlet,
+        loginAsVendorFree,
+        loginAsStudentDemo,
         outlets,
         updateOutletOperationalStatus,
         inventory,

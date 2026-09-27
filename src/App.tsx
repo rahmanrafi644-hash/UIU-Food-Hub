@@ -33,11 +33,27 @@ const RequireStudent: React.FC<{ children: React.ReactElement }> = ({ children }
   return children;
 };
 
-// Strict Role Guard for Vendors
+// Open & Free Access for Vendors (so faculty can directly inspect any vendor outlet without registration)
 const RequireVendor: React.FC<{ children: React.ReactElement }> = ({ children }) => {
-  const { user } = useApp();
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'vendor') return <Navigate to="/" replace />;
+  const { user, loginAsVendorFree } = useApp();
+
+  React.useEffect(() => {
+    if (!user || user.role !== 'vendor') {
+      loginAsVendorFree('khans-kitchen');
+    }
+  }, [user, loginAsVendorFree]);
+
+  if (!user || user.role !== 'vendor') {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', flexDirection: 'column', gap: 12 }}>
+        <div className="spinner" />
+        <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
+          Opening Vendor Operations (Free Faculty Access)...
+        </span>
+      </div>
+    );
+  }
+
   return children;
 };
 

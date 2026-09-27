@@ -9,13 +9,15 @@ import {
   AlertTriangle,
   Sparkles,
   BookOpen,
+  Store,
+  GraduationCap,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export const Header: React.FC<{
   onOpenNotifications?: () => void;
 }> = () => {
-  const { user, logout, notifications, resetDemoData, markNotificationAsRead } = useApp();
+  const { user, logout, notifications, resetDemoData, markNotificationAsRead, loginAsVendorFree, loginAsStudentDemo } = useApp();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -54,6 +56,57 @@ export const Header: React.FC<{
         </Link>
 
         <div className="header-actions">
+          {/* Quick Faculty Portal Switcher */}
+          {user?.role === 'student' ? (
+            <button
+              onClick={() => {
+                loginAsVendorFree('khans-kitchen');
+                navigate('/vendor');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                borderRadius: 8,
+                border: '1px solid #FED7AA',
+                background: '#FFF7ED',
+                color: '#EA580C',
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+              title="Open Vendor Operations Portal (Faculty Evaluation)"
+            >
+              <Store size={13} />
+              <span>Vendor Portal</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                loginAsStudentDemo('bba');
+                navigate('/');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 10px',
+                borderRadius: 8,
+                border: '1px solid #A7F3D0',
+                background: '#ECFDF5',
+                color: '#059669',
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+              title="Open Student Campus App (Faculty Evaluation)"
+            >
+              <GraduationCap size={13} />
+              <span>Student App</span>
+            </button>
+          )}
+
           {/* Presentation Script Guide */}
           <button
             className="btn-icon-circle"
