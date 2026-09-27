@@ -24,7 +24,7 @@ The platform is backed by **Supabase** for secure authentication, relational dat
          ┌────────────────────────┴────────────────────────┐
          │                                                 │
    STUDENT AUTH                                      VENDOR AUTH
-  (@uiu.ac.bd only)                             (Any valid email + branch)
+   (*.uiu.ac.bd only)                            (Any valid email + branch)
          │                                                 │
          └────────────────────────┬────────────────────────┘
                                   ▼
@@ -86,16 +86,21 @@ The database enforces security at the PostgreSQL level:
 ## 🎓 Registration & Email Verification Rules
 
 ### 1. Student Registration
-* **Fields**: Full Name, UIU Email, Phone Number, Student ID, Password, Confirm Password.
-* **Email Restriction**: Must end with `@uiu.ac.bd` (e.g. `teststudent@uiu.ac.bd`).
+* **Fields**: Full Name, UIU Institutional Email, Phone Number, Student ID, Password, Confirm Password.
+* **Email Restriction**: Must end with `.uiu.ac.bd` across all departments:
+  - BBA: `mrahman2330209@bba.uiu.ac.bd`
+  - CSE: `studentname@cse.uiu.ac.bd`
+  - EEE: `studentname@eee.uiu.ac.bd`
+  - CE / Eco / Other departments: `studentname@department.uiu.ac.bd`
+  - Root: `studentname@uiu.ac.bd`
 * If a student enters `test@gmail.com` or any non-UIU domain:
-  > *"Students must register using a valid UIU email address ending with @uiu.ac.bd."*
-* Account requires Supabase email verification before first login.
+  > *"Students must register using a valid UIU institutional email address (e.g. mrahman2330209@bba.uiu.ac.bd, student@cse.uiu.ac.bd)."*
+* Account requires 6-digit OTP verification before first login.
 
 ### 2. Vendor Registration
 * **Fields**: Vendor/Owner Name, Outlet Selection (`Khan's Kitchen`, `Olympia`, `CP`, `Brew`, `Toa's Kitchen`), Email, Phone Number, Password, Confirm Password.
 * **Email Rule**: Vendors can use general email addresses (e.g. `khanskitchen@gmail.com`).
-* Email verification screen with resend link functionality.
+* 6-digit verification code screen with resend functionality.
 
 ---
 
@@ -105,7 +110,8 @@ For offline demonstration and faculty review, demo credentials are built-in:
 
 | Role | Email | Password | Scope |
 | :--- | :--- | :--- | :--- |
-| **Student** | `student@uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
+| **Student (BBA)** | `mrahman2330209@bba.uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
+| **Student (CSE)** | `student@cse.uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
 | **Vendor** | `vendor@uiu.ac.bd` | `demo123` | Khan's Kitchen (or selectable branch) |
 
 ---

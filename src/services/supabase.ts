@@ -54,23 +54,31 @@ export interface SignUpVendorParams {
 }
 
 /**
- * Validates whether an email ends with @uiu.ac.bd
+ * Validates whether an email is a valid UIU institutional email
+ * Supports all department subdomains, e.g.:
+ * - mrahman2330209@bba.uiu.ac.bd (BBA)
+ * - student@cse.uiu.ac.bd (CSE)
+ * - student@eee.uiu.ac.bd (EEE)
+ * - student@ce.uiu.ac.bd (CE)
+ * - student@uiu.ac.bd (General / Root)
  */
 export const isUiuEmail = (email: string): boolean => {
-  return email.trim().toLowerCase().endsWith('@uiu.ac.bd');
+  const clean = email.trim().toLowerCase();
+  const uiuRegex = /^[^\s@]+@([a-zA-Z0-9-]+\.)*uiu\.ac\.bd$/i;
+  return uiuRegex.test(clean);
 };
 
 /**
- * Student Registration: Enforces @uiu.ac.bd email restriction
+ * Student Registration: Enforces UIU institutional email restriction (*.uiu.ac.bd)
  */
 export const registerStudentWithSupabase = async (params: SignUpStudentParams) => {
   const cleanEmail = params.email.trim().toLowerCase();
 
-  // Strict check: must end with @uiu.ac.bd
+  // Strict check: must end with .uiu.ac.bd (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd) or @uiu.ac.bd
   if (!isUiuEmail(cleanEmail)) {
     return {
       success: false,
-      error: 'Students must register using a valid UIU email address ending with @uiu.ac.bd.',
+      error: 'Students must register using a valid UIU institutional email address (e.g. mrahman2330209@bba.uiu.ac.bd, student@cse.uiu.ac.bd).',
     };
   }
 

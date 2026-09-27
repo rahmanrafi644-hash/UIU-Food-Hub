@@ -20,9 +20,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-  -- Database-level rule: Students MUST have an email ending with @uiu.ac.bd
+  -- Database-level rule: Students MUST have an email ending with .uiu.ac.bd (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd) or @uiu.ac.bd
   CONSTRAINT check_student_email CHECK (
-    role <> 'student' OR email ILIKE '%@uiu.ac.bd'
+    role <> 'student' OR email ILIKE '%.uiu.ac.bd' OR email ILIKE '%@uiu.ac.bd'
   )
 );
 
@@ -158,9 +158,9 @@ BEGIN
   user_outlet_id := NEW.raw_user_meta_data->>'vendor_outlet_id';
   user_outlet_name := NEW.raw_user_meta_data->>'vendor_outlet_name';
 
-  -- Double check student email constraint before inserting
-  IF user_role = 'student' AND NOT (NEW.email ILIKE '%@uiu.ac.bd') THEN
-    RAISE EXCEPTION 'Students must register using a valid UIU email address ending with @uiu.ac.bd.';
+  -- Double check student email constraint before inserting (supports @bba.uiu.ac.bd, @cse.uiu.ac.bd, etc.)
+  IF user_role = 'student' AND NOT (NEW.email ILIKE '%.uiu.ac.bd' OR NEW.email ILIKE '%@uiu.ac.bd') THEN
+    RAISE EXCEPTION 'Students must register using a valid UIU institutional email address ending with .uiu.ac.bd (e.g. yourid@bba.uiu.ac.bd, yourid@cse.uiu.ac.bd).';
   END IF;
 
   INSERT INTO public.profiles (

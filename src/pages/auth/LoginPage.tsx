@@ -136,10 +136,10 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    // 2. Student Email Validation rule: MUST end in @uiu.ac.bd
+    // 2. Student Email Validation rule: MUST end in .uiu.ac.bd (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd)
     if (role === 'student') {
       if (!isUiuEmail(cleanEmail)) {
-        setErrorMsg('Students must register using a valid UIU email address ending with @uiu.ac.bd.');
+        setErrorMsg('Students must register using a valid UIU institutional email address (e.g. yourid@bba.uiu.ac.bd, yourid@cse.uiu.ac.bd).');
         return;
       }
     }
@@ -291,10 +291,14 @@ export const LoginPage: React.FC = () => {
   };
 
   // Faculty Helper Quick Fill
-  const handleFillDemo = (type: 'student' | 'vendor') => {
-    if (type === 'student') {
+  const handleFillDemo = (type: 'bba_student' | 'cse_student' | 'vendor') => {
+    if (type === 'bba_student') {
       setRole('student');
-      setEmail('student@uiu.ac.bd');
+      setEmail('mrahman2330209@bba.uiu.ac.bd');
+      setPassword('demo123');
+    } else if (type === 'cse_student') {
+      setRole('student');
+      setEmail('student@cse.uiu.ac.bd');
       setPassword('demo123');
     } else {
       setRole('vendor');
@@ -668,7 +672,7 @@ export const LoginPage: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your.email@uiu.ac.bd"
+                  placeholder="e.g. mrahman2330209@bba.uiu.ac.bd"
                   style={{
                     width: '100%',
                     padding: '12px 14px',
@@ -915,14 +919,14 @@ export const LoginPage: React.FC = () => {
               <form onSubmit={handleSignIn} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 4 }}>
-                    {role === 'student' ? 'UIU Email (@uiu.ac.bd)' : 'Vendor Email'}
+                    {role === 'student' ? 'UIU Email (@*.uiu.ac.bd)' : 'Vendor Email'}
                   </label>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={role === 'student' ? 'student@uiu.ac.bd' : 'vendor@email.com'}
+                    placeholder={role === 'student' ? 'e.g. mrahman2330209@bba.uiu.ac.bd' : 'vendor@email.com'}
                     style={{
                       width: '100%',
                       padding: '11px 12px',
@@ -1011,15 +1015,34 @@ export const LoginPage: React.FC = () => {
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>🎓 Student: <code>student@uiu.ac.bd</code></span>
+                        <span>🎓 BBA: <code>mrahman2330209@bba.uiu.ac.bd</code></span>
                         <button
                           type="button"
-                          onClick={() => handleFillDemo('student')}
+                          onClick={() => handleFillDemo('bba_student')}
                           style={{
                             fontSize: 10,
                             padding: '3px 8px',
                             borderRadius: 6,
                             background: 'var(--primary)',
+                            color: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Fill
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>🎓 CSE: <code>student@cse.uiu.ac.bd</code></span>
+                        <button
+                          type="button"
+                          onClick={() => handleFillDemo('cse_student')}
+                          style={{
+                            fontSize: 10,
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            background: '#10B981',
                             color: 'white',
                             border: 'none',
                             cursor: 'pointer',
@@ -1088,14 +1111,14 @@ export const LoginPage: React.FC = () => {
 
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 3 }}>
-                    {role === 'student' ? 'UIU Email (@uiu.ac.bd only)' : 'Email Address'}
+                    {role === 'student' ? 'UIU Institutional Email (@*.uiu.ac.bd)' : 'Email Address'}
                   </label>
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={role === 'student' ? 'studentname@uiu.ac.bd' : 'vendor@example.com'}
+                    placeholder={role === 'student' ? 'e.g. mrahman2330209@bba.uiu.ac.bd' : 'vendor@example.com'}
                     style={{
                       width: '100%',
                       padding: '10px 12px',
@@ -1108,7 +1131,7 @@ export const LoginPage: React.FC = () => {
                   />
                   {role === 'student' && (
                     <span style={{ fontSize: 10, color: '#D97706', fontWeight: 600, marginTop: 2, display: 'block' }}>
-                      * Must end in @uiu.ac.bd
+                      * Must end with .uiu.ac.bd (e.g. @bba.uiu.ac.bd, @cse.uiu.ac.bd)
                     </span>
                   )}
                 </div>
