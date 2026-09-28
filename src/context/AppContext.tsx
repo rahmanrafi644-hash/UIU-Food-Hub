@@ -35,9 +35,9 @@ import {
   resendSupabaseVerification,
 } from '../services/supabase';
 
-const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V6';
-const USERS_STORAGE_KEY = 'UIU_FOOD_HUB_REGISTERED_USERS_V6';
-const PENDING_STORAGE_KEY = 'UIU_FOOD_HUB_PENDING_VERIFY_V6';
+const STORAGE_KEY = 'UIU_FOOD_HUB_STATE_V7';
+const USERS_STORAGE_KEY = 'UIU_FOOD_HUB_REGISTERED_USERS_V7';
+const PENDING_STORAGE_KEY = 'UIU_FOOD_HUB_PENDING_VERIFY_V7';
 
 export interface RegisteredUser {
   id: string;
@@ -335,9 +335,48 @@ const INITIAL_REGISTERED_USERS: RegisteredUser[] = [
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const loadState = () => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const stateKeys = [
+        STORAGE_KEY,
+        'UIU_FOOD_HUB_STATE_V6',
+        'UIU_FOOD_HUB_STATE_V5',
+        'UIU_FOOD_HUB_STATE_V4',
+        'UIU_FOOD_HUB_STATE_V3',
+        'UIU_FOOD_HUB_STATE_V2',
+        'UIU_FOOD_HUB_STATE',
+      ];
+      let saved: string | null = null;
+      for (const k of stateKeys) {
+        const val = localStorage.getItem(k);
+        if (val) {
+          saved = val;
+          break;
+        }
+      }
       if (saved) {
-        return JSON.parse(saved);
+        // Automatically sanitize and migrate any stale "Toa's Kitchen" occurrences in cached state
+        const corrected = saved.replace(/Toa's Kitchen/g, "Toua's Kitchen");
+        const parsed = JSON.parse(corrected);
+        if (parsed.outlets) {
+          parsed.outlets = parsed.outlets.map((o: any) =>
+            o.id === 'toas-kitchen' ? { ...o, name: "Toua's Kitchen" } : o
+          );
+        }
+        if (parsed.inventory) {
+          parsed.inventory = parsed.inventory.map((item: any) =>
+            item.outletId === 'toas-kitchen' ? { ...item, outletName: "Toua's Kitchen" } : item
+          );
+        }
+        if (parsed.orders) {
+          parsed.orders = parsed.orders.map((ord: any) =>
+            ord.outletId === 'toas-kitchen' ? { ...ord, outletName: "Toua's Kitchen" } : ord
+          );
+        }
+        if (parsed.messages) {
+          parsed.messages = parsed.messages.map((m: any) =>
+            m.outletId === 'toas-kitchen' ? { ...m, outletName: "Toua's Kitchen" } : m
+          );
+        }
+        return parsed;
       }
     } catch (e) {
       console.error('Error reading localStorage:', e);
@@ -401,17 +440,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const [user, setUser] = useState<User | null>(persisted?.user || null);
-  const [outlets, setOutlets] = useState<CampusOutlet[]>(persisted?.outlets || INITIAL_OUTLETS);
-  const [inventory, setInventory] = useState<FoodItem[]>(persisted?.inventory || INITIAL_FOOD_ITEMS);
+  const [outlets, setOutlets] = useState<CampusOutlet[]>(() => {
+    const list: CampusOutlet[] = persisted?.outlets || INITIAL_OUTLETS;
+    return list.map((o: CampusOutlet) => (o.id === 'toas-kitchen' ? { ...o, name: "Toua's Kitchen" } : o));
+  });
+  const [inventory, setInventory] = useState<FoodItem[]>(() => {
+    const items: FoodItem[] = persisted?.inventory || INITIAL_FOOD_ITEMS;
+    return items.map((i: FoodItem) =>
+      i.outletId === 'toas-kitchen' ? { ...i, outletName: "Toua's Kitchen" } : i
+    );
+  });
   const [tables, setTables] = useState<CampusTable[]>(persisted?.tables || INITIAL_TABLES);
   const [cart, setCart] = useState<CartItem[]>(persisted?.cart || []);
-  const [orders, setOrders] = useState<Order[]>(persisted?.orders || INITIAL_DEMO_ORDERS);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const ords: Order[] = persisted?.orders || INITIAL_DEMO_ORDERS;
+    return ords.map((o: Order) =>
+      o.outletId === 'toas-kitchen' ? { ...o, outletName: "Toua's Kitchen" } : o
+    );
+  });
   const [tableBookings, setTableBookings] = useState<TableBooking[]>(persisted?.tableBookings || []);
   const [reports, setReports] = useState<CustomerReport[]>(persisted?.reports || []);
-  const [messages, setMessages] = useState<ChatMessage[]>(persisted?.messages || INITIAL_DEMO_MESSAGES);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const msgs: ChatMessage[] = persisted?.messages || INITIAL_DEMO_MESSAGES;
+    return msgs.map((m: ChatMessage) =>
+      m.outletId === 'toas-kitchen' ? { ...m, outletName: "Toua's Kitchen" } : m
+    );
+  });
   const [notifications, setNotifications] = useState<AppNotification[]>(
     persisted?.notifications || INITIAL_DEMO_NOTIFICATIONS
   );
+
+  // Instant local storage sweep to guarantee no residual "Toa's Kitchen" in browser storage
+  useEffect(() => {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.includes('UIU_FOOD_HUB')) {
+          const val = localStorage.getItem(key);
+          if (val && val.includes("Toa's Kitchen")) {
+            localStorage.setItem(key, val.replace(/Toa's Kitchen/g, "Toua's Kitchen"));
+          }
+        }
+      }
+    } catch {}
+  }, []);
 
   // Sync to localStorage as backup/cache
   useEffect(() => {
@@ -469,12 +541,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           studentId: row.student_user_id,
           studentName: row.student_name,
           outletId: row.vendor_id,
-          outletName: row.outlet_name,
+          outletName: (row.outlet_name || '').replace(/Toa's Kitchen/g, "Toua's Kitchen"),
           items: (row.order_items || []).map((oi: any) => ({
             item: {
               id: oi.food_item_id,
               outletId: row.vendor_id,
-              outletName: row.outlet_name,
+              outletName: (row.outlet_name || '').replace(/Toa's Kitchen/g, "Toua's Kitchen"),
               name: oi.item_name,
               price: Number(oi.price),
               category: 'Rice',
@@ -526,7 +598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const mappedInv: FoodItem[] = data.map((row: any) => ({
           id: row.id,
           outletId: row.outlet_id,
-          outletName: row.outlet_name,
+          outletName: (row.outlet_name || '').replace(/Toa's Kitchen/g, "Toua's Kitchen"),
           name: row.name,
           category: row.category,
           price: Number(row.price),
@@ -1741,6 +1813,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Reset Demo Presentation
   const resetDemoData = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('UIU_FOOD_HUB_STATE_V6');
+    setOutlets(INITIAL_OUTLETS);
     setInventory(INITIAL_FOOD_ITEMS);
     setOrders(INITIAL_DEMO_ORDERS);
     setTableBookings([]);
