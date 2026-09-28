@@ -71,7 +71,7 @@ export const StudentOrdersPage: React.FC = () => {
           <ShoppingBag size={48} color="var(--text-light)" style={{ margin: '0 auto 12px auto' }} />
           <h4 style={{ fontSize: 17, fontWeight: 800 }}>No orders placed yet</h4>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Order from Khan&apos;s Kitchen, Olympia, CP, Brew or Toa&apos;s Kitchen to track here.
+            Order from Khan&apos;s Kitchen, Olympia, CP, Brew or Toua&apos;s Kitchen to track here.
           </p>
         </div>
       ) : (

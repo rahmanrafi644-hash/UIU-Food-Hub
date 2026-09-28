@@ -346,13 +346,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loadRegisteredUsers = (): RegisteredUser[] => {
-    try {
-      const saved = localStorage.getItem(USERS_STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch {}
-    return INITIAL_REGISTERED_USERS;
+    const storageKeys = [
+      USERS_STORAGE_KEY,
+      'UIU_FOOD_HUB_REGISTERED_USERS_V6',
+      'UIU_FOOD_HUB_REGISTERED_USERS_V5',
+      'UIU_FOOD_HUB_REGISTERED_USERS_V4',
+      'UIU_FOOD_HUB_REGISTERED_USERS_V3',
+      'UIU_FOOD_HUB_REGISTERED_USERS_V2',
+      'UIU_FOOD_HUB_REGISTERED_USERS',
+    ];
+
+    const usersMap = new Map<string, RegisteredUser>();
+
+    // Seed default demo accounts first
+    for (const u of INITIAL_REGISTERED_USERS) {
+      usersMap.set(u.email.toLowerCase(), u);
+    }
+
+    // Merge saved users across all historical keys
+    for (const key of storageKeys) {
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            for (const u of parsed) {
+              if (u && u.email) {
+                usersMap.set(u.email.toLowerCase(), u);
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    return Array.from(usersMap.values());
   };
 
   const loadPendingVerification = (): PendingVerification | null => {
@@ -648,49 +676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: 'Please enter your account password.' };
     }
 
-    // 1. If Supabase is configured, attempt real Supabase Authentication
-    if (isSupabaseConfigured()) {
-      const res = await loginWithSupabase(cleanEmail, cleanPassword);
-
-      if (res.success && res.user) {
-        // Fetch user profile from database
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', res.user.id)
-          .maybeSingle();
-
-        const role = (profile?.role || res.user.user_metadata?.role || requestedRole) as UserRole;
-        const targetOutlet = outlets.find(
-          (o) => o.id === (profile?.vendor_outlet_id || res.user.user_metadata?.vendor_outlet_id || selectedOutletId)
-        ) || outlets[0];
-
-        const loggedInUser: User = {
-          id: res.user.id,
-          name: profile?.full_name || res.user.user_metadata?.full_name || cleanEmail.split('@')[0],
-          email: res.user.email || cleanEmail,
-          role,
-          studentId: profile?.student_id || res.user.user_metadata?.student_id,
-          phone: profile?.phone || res.user.user_metadata?.phone,
-          vendorOutletId: role === 'vendor' ? targetOutlet.id : undefined,
-          vendorOutletName: role === 'vendor' ? targetOutlet.name : undefined,
-        };
-
-        setUser(loggedInUser);
-        fetchDbOrders(loggedInUser.id, loggedInUser.role, loggedInUser.vendorOutletId);
-        return { success: true };
-      }
-
-      if (res.isUnconfirmed) {
-        return {
-          success: false,
-          isUnconfirmed: true,
-          error: 'Please enter your 6-digit verification code to activate your account.',
-        };
-      }
-    }
-
-    // 2. Check locally registered accounts (including demo and locally registered accounts)
+    // 1. Check registered accounts (local, verified, and pre-seeded accounts)
     const existing = registeredUsers.find((u) => u.email.toLowerCase() === cleanEmail);
 
     if (existing) {
@@ -703,7 +689,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (existing.password && existing.password !== cleanPassword) {
-        return { success: false, error: 'Incorrect password. Please try again.' };
+        // Also check if Supabase has a valid session in case password was changed in Supabase
+        if (isSupabaseConfigured()) {
+          const supaRes = await loginWithSupabase(cleanEmail, cleanPassword);
+          if (!supaRes.success) {
+            return { success: false, error: 'Incorrect password. Please try again.' };
+          }
+        } else {
+          return { success: false, error: 'Incorrect password. Please try again.' };
+        }
       }
 
       const targetOutlet = outlets.find(
@@ -722,11 +716,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       setUser(loggedInUser);
+      fetchDbOrders(loggedInUser.id, loggedInUser.role, loggedInUser.vendorOutletId);
       return { success: true };
     }
 
-    // 3. User does NOT exist in Supabase and NOT in registered users
-    // Vendor accounts are 100% free & open for faculty evaluation!
+    // 2. If not found in registered accounts list, check Supabase Auth directly
+    if (isSupabaseConfigured()) {
+      const res = await loginWithSupabase(cleanEmail, cleanPassword);
+
+      if (res.success && res.user) {
+        // Fetch user profile from database
+        let profile = null;
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', res.user.id)
+            .maybeSingle();
+          profile = data;
+        } catch {}
+
+        const role = (profile?.role || res.user.user_metadata?.role || requestedRole) as UserRole;
+        const targetOutlet = outlets.find(
+          (o) => o.id === (profile?.vendor_outlet_id || res.user.user_metadata?.vendor_outlet_id || selectedOutletId)
+        ) || outlets[0];
+
+        const loggedInUser: User = {
+          id: res.user.id,
+          name: profile?.full_name || res.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+          email: res.user.email || cleanEmail,
+          role,
+          studentId: profile?.student_id || res.user.user_metadata?.student_id,
+          phone: profile?.phone || res.user.user_metadata?.phone,
+          vendorOutletId: role === 'vendor' ? targetOutlet.id : undefined,
+          vendorOutletName: role === 'vendor' ? targetOutlet.name : undefined,
+        };
+
+        // Cache into registeredUsers so subsequent logins are instant
+        const verifiedRecord: RegisteredUser = {
+          id: loggedInUser.id,
+          email: cleanEmail,
+          password: cleanPassword,
+          role: loggedInUser.role,
+          fullName: loggedInUser.name,
+          phone: loggedInUser.phone,
+          studentId: loggedInUser.studentId,
+          vendorOutletId: loggedInUser.vendorOutletId,
+          vendorOutletName: loggedInUser.vendorOutletName,
+          isVerified: true,
+        };
+
+        setRegisteredUsers((prev) => {
+          const filtered = prev.filter((u) => u.email.toLowerCase() !== cleanEmail);
+          const updated = [...filtered, verifiedRecord];
+          try {
+            localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+
+        setUser(loggedInUser);
+        fetchDbOrders(loggedInUser.id, loggedInUser.role, loggedInUser.vendorOutletId);
+        return { success: true };
+      }
+
+      if (res.isUnconfirmed) {
+        return {
+          success: false,
+          isUnconfirmed: true,
+          error: 'Please enter your 6-digit verification code to activate your account.',
+        };
+      }
+    }
+
+    // 3. Vendor accounts are 100% free & open for faculty evaluation!
     if (requestedRole === 'vendor') {
       const targetOutlet = outlets.find((o) => o.id === selectedOutletId) || outlets[0];
       const vendorUser: User = {
@@ -770,7 +833,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }> => {
     const cleanEmail = params.email.trim().toLowerCase();
 
-    // Check if already registered locally (ignore seeded demo accounts so they can be re-tested freshly)
+    // Check if already registered locally
     const alreadyRegistered = registeredUsers.find(
       (u) =>
         u.email.toLowerCase() === cleanEmail &&
@@ -778,12 +841,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         !u.id.startsWith('stu-demo') &&
         !u.id.startsWith('ven-demo')
     );
+    // If account already exists, we allow re-verifying with new password so the student is never blocked
     if (alreadyRegistered) {
-      return {
-        success: false,
-        needsVerification: false,
-        error: 'An account with this email is already registered and verified. Please sign in instead.',
-      };
+      console.log('Account exists in system. Dispatching new verification code...');
     }
 
     // Generate a secure 6-digit verification OTP code

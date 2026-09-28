@@ -437,12 +437,12 @@ VALUES
   ('brew-cold-coffee', 'brew', 'Brew', 'UIU Special Cold Coffee', 'Coffee', 120, 'Blended iced cold coffee with vanilla ice cream top.', 'https://images.unsplash.com/photo-1517701550927-30cf4ba1dba5?auto=format&fit=crop&w=600&q=80', 45, 'Available', 5, 5.0, true),
   ('brew-iced-latte', 'brew', 'Brew', 'Iced Caramel Latte', 'Coffee', 150, 'Chilled espresso over milk and ice with drizzle of salted caramel.', 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=600&q=80', 30, 'Available', 4, 4.8, false),
 
-  -- Toa's Kitchen
-  ('toa-mango-juice', 'toas-kitchen', 'Toa''s Kitchen', 'Fresh Rajshahi Mango Juice', 'Juice', 80, 'Pure blended seasonal sweet mango pulp chilled with crushed ice.', 'https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=600&q=80', 25, 'Available', 4, 4.9, true),
-  ('toa-orange-juice', 'toas-kitchen', 'Toa''s Kitchen', 'Fresh Squeezed Orange Juice', 'Juice', 90, '100% natural Valencia oranges squeezed to order with citrus pulp.', 'https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&w=600&q=80', 20, 'Available', 4, 4.7, false),
-  ('toa-watermelon-juice', 'toas-kitchen', 'Toa''s Kitchen', 'Hydrating Watermelon Juice', 'Juice', 70, 'Cold pressed fresh watermelon with pinch of black salt and mint.', 'https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?auto=format&fit=crop&w=600&q=80', 30, 'Available', 3, 4.8, true),
-  ('toa-pineapple-juice', 'toas-kitchen', 'Toa''s Kitchen', 'Tangy Pineapple Juice', 'Juice', 85, 'Freshly blended Modhupur pineapple with hint of rock salt.', 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?auto=format&fit=crop&w=600&q=80', 20, 'Available', 4, 4.6, false),
-  ('toa-lemon-juice', 'toas-kitchen', 'Toa''s Kitchen', 'Iced Fresh Lemonade (Shikanji)', 'Juice', 50, 'Zesty squeezed green lemon with mint leaves and crushed ice.', 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=600&q=80', 40, 'Available', 2, 4.9, false)
+  -- Toua's Kitchen
+  ('toa-mango-juice', 'toas-kitchen', 'Toua''s Kitchen', 'Fresh Rajshahi Mango Juice', 'Juice', 80, 'Pure blended seasonal sweet mango pulp chilled with crushed ice.', 'https://images.unsplash.com/photo-1546173159-315724a31696?auto=format&fit=crop&w=600&q=80', 25, 'Available', 4, 4.9, true),
+  ('toa-orange-juice', 'toas-kitchen', 'Toua''s Kitchen', 'Fresh Squeezed Orange Juice', 'Juice', 90, '100% natural Valencia oranges squeezed to order with citrus pulp.', 'https://images.unsplash.com/photo-1613478223719-2ab802602423?auto=format&fit=crop&w=600&q=80', 20, 'Available', 4, 4.7, false),
+  ('toa-watermelon-juice', 'toas-kitchen', 'Toua''s Kitchen', 'Hydrating Watermelon Juice', 'Juice', 70, 'Cold pressed fresh watermelon with pinch of black salt and mint.', 'https://images.unsplash.com/photo-1589733955941-5eeaf752f6dd?auto=format&fit=crop&w=600&q=80', 30, 'Available', 3, 4.8, true),
+  ('toa-pineapple-juice', 'toas-kitchen', 'Toua''s Kitchen', 'Tangy Pineapple Juice', 'Juice', 85, 'Freshly blended Modhupur pineapple with hint of rock salt.', 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?auto=format&fit=crop&w=600&q=80', 20, 'Available', 4, 4.6, false),
+  ('toa-lemon-juice', 'toas-kitchen', 'Toua''s Kitchen', 'Iced Fresh Lemonade (Shikanji)', 'Juice', 50, 'Zesty squeezed green lemon with mint leaves and crushed ice.', 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=600&q=80', 40, 'Available', 2, 4.9, false)
 ON CONFLICT (id) DO UPDATE SET
   stock = EXCLUDED.stock,
   price = EXCLUDED.price,

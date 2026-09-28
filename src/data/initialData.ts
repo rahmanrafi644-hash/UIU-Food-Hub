@@ -53,7 +53,7 @@ export const INITIAL_OUTLETS: CampusOutlet[] = [
   },
   {
     id: 'toas-kitchen',
-    name: "Toa's Kitchen",
+    name: "Toua's Kitchen",
     location: 'Sports & Student Activity Lounge',
     image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?auto=format&fit=crop&w=800&q=80',
     description: 'Freshly squeezed natural fruit juices, detox refreshers, and healthy drinks.',
@@ -417,11 +417,11 @@ export const INITIAL_FOOD_ITEMS: FoodItem[] = [
     rating: 4.8,
   },
 
-  // 5. Toa's Kitchen
+  // 5. Toua's Kitchen
   {
     id: 'tk-mango-juice',
     outletId: 'toas-kitchen',
-    outletName: "Toa's Kitchen",
+    outletName: "Toua's Kitchen",
     name: 'Mango Juice',
     category: 'Juice',
     price: 90,
@@ -436,7 +436,7 @@ export const INITIAL_FOOD_ITEMS: FoodItem[] = [
   {
     id: 'tk-orange-juice',
     outletId: 'toas-kitchen',
-    outletName: "Toa's Kitchen",
+    outletName: "Toua's Kitchen",
     name: 'Orange Juice',
     category: 'Juice',
     price: 90,
@@ -450,7 +450,7 @@ export const INITIAL_FOOD_ITEMS: FoodItem[] = [
   {
     id: 'tk-watermelon-juice',
     outletId: 'toas-kitchen',
-    outletName: "Toa's Kitchen",
+    outletName: "Toua's Kitchen",
     name: 'Watermelon Juice',
     category: 'Juice',
     price: 80,
@@ -464,7 +464,7 @@ export const INITIAL_FOOD_ITEMS: FoodItem[] = [
   {
     id: 'tk-pineapple-juice',
     outletId: 'toas-kitchen',
-    outletName: "Toa's Kitchen",
+    outletName: "Toua's Kitchen",
     name: 'Pineapple Juice',
     category: 'Juice',
     price: 90,
@@ -478,7 +478,7 @@ export const INITIAL_FOOD_ITEMS: FoodItem[] = [
   {
     id: 'tk-lemon-juice',
     outletId: 'toas-kitchen',
-    outletName: "Toa's Kitchen",
+    outletName: "Toua's Kitchen",
     name: 'Lemon Juice',
     category: 'Juice',
     price: 50,

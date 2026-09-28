@@ -97,8 +97,9 @@ The database enforces security at the PostgreSQL level:
   > *"Students must register using a valid UIU institutional email address (e.g. mrahman2330209@bba.uiu.ac.bd, student@cse.uiu.ac.bd)."*
 * Account requires 6-digit OTP verification before first login.
 
-### 2. Vendor Registration
-* **Fields**: Vendor/Owner Name, Outlet Selection (`Khan's Kitchen`, `Olympia`, `CP`, `Brew`, `Toa's Kitchen`), Email, Phone Number, Password, Confirm Password.
+### 2. Vendor Registration & Free Portal Access
+* **Fields**: Vendor/Owner Name, Outlet Selection (`Khan's Kitchen`, `Olympia`, `CP`, `Brew`, `Toua's Kitchen`), Email, Phone Number, Password, Confirm Password.
+* **Open Access**: Faculty and evaluators can enter any outlet dashboard with 1-click open access without registration.
 * **Email Rule**: Vendors can use general email addresses (e.g. `khanskitchen@gmail.com`).
 * 6-digit verification code screen with resend functionality.
 
@@ -110,9 +111,9 @@ For offline demonstration and faculty review, demo credentials are built-in:
 
 | Role | Email | Password | Scope |
 | :--- | :--- | :--- | :--- |
-| **Student (BBA)** | `mrahman2330209@bba.uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
-| **Student (CSE)** | `student@cse.uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
-| **Vendor** | `vendor@uiu.ac.bd` | `demo123` | Khan's Kitchen (or selectable branch) |
+| **Student (BBA)** | `demo.student@bba.uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
+| **Student (CSE)** | `demo.student@cse.uiu.ac.bd` | `demo123` | Student UI, order history, table bookings |
+| **Vendor** | `vendor@uiu.ac.bd` (or direct 1-click) | `demo123` | Khan's Kitchen (or selectable branch) |
 
 ---
 
@@ -122,7 +123,7 @@ For offline demonstration and faculty review, demo credentials are built-in:
 2. **Olympia**: Special Fried Rice, Southern Fried Chicken, Stir Fry Vegetables, Egg Khichuri, Olympia Chicken Khichuri, Grilled Chicken Sub, Lebanese Shawarma.
 3. **CP**: Five Star Crispy Chicken, Spicy Crispy Chicken, Smoked Chicken Frank Sausage, Spicy Meatballs.
 4. **Brew**: Hot Americano, Frothy Cappuccino, Classic Latte, Chocolate Mocha, Special Cold Coffee, Iced Caramel Latte.
-5. **Toa's Kitchen**: Mango Juice, Squeezed Orange Juice, Hydrating Watermelon Juice, Pineapple Juice, Iced Fresh Lemonade.
+5. **Toua's Kitchen**: Mango Juice, Squeezed Orange Juice, Hydrating Watermelon Juice, Pineapple Juice, Iced Fresh Lemonade.
 
 ### Live Stock Status
 * `0 units`: **Sold Out** (Red badge • Disabled)
